@@ -1,13 +1,9 @@
-
 import "@/styles/globals.css"
 import { Metadata } from "next"
 
 import { siteConfig } from "@/config/site"
 import { fontSans } from "@/lib/fonts"
 import { cn } from "@/lib/utils"
-import { SiteHeader } from "@/components/site-header"
-import { TailwindIndicator } from "@/components/tailwind-indicator"
-import { ThemeProvider } from "@/components/theme-provider"
 import {
   Sheet,
   SheetContent,
@@ -15,7 +11,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { Wallet } from "./Wallet";
+import { SiteHeader } from "@/components/site-header"
+import { TailwindIndicator } from "@/components/tailwind-indicator"
+import { ThemeProvider } from "@/components/theme-provider"
+
+import { Wallet } from "./Wallet"
 
 export const metadata: Metadata = {
   title: {
@@ -63,19 +63,18 @@ export default function RootLayout({ children }: RootLayoutProps) {
     </>
   )
 }
-function WalletSheet({ open }: { open: boolean; }) {
+function WalletSheet({ open }: { open: boolean }) {
   return (
     <Sheet open={open}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Are you sure absolutely sure?</SheetTitle>
           <SheetDescription>
-            This action cannot be undone. This will permanently delete your account
-            and remove your data from our servers.
+            This action cannot be undone. This will permanently delete your
+            account and remove your data from our servers.
           </SheetDescription>
         </SheetHeader>
       </SheetContent>
     </Sheet>
-  );
+  )
 }
-

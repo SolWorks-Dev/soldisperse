@@ -1,15 +1,26 @@
 "use client"
 
-import { Separator } from "@/components/ui/separator";
+import { useEffect, useState } from "react"
+import {
+  createAssociatedTokenAccountInstruction,
+  getAccount,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token"
+import { TokenInfo, TokenListProvider } from "@solana/spl-token-registry"
+import { useWallet } from "@solana/wallet-adapter-react"
+import { PublicKey, Transaction } from "@solana/web3.js"
+import {
+  ConnectionManager,
+  Logger,
+  TransactionBuilder,
+} from "@solworks/soltoolkit-sdk"
+import { RefreshCw } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TokenSelector } from "./TokenSelector";
-import { useEffect, useState } from "react";
-import { PublicKey, Transaction } from "@solana/web3.js";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { RefreshCw } from "lucide-react";
-import { TokenInfo, TokenListProvider } from "@solana/spl-token-registry";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import {
   Table,
   TableBody,
@@ -18,53 +29,55 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/use-toast";
-import { ConnectionManager, Logger, TransactionBuilder } from "@solworks/soltoolkit-sdk";
-import { createAssociatedTokenAccountInstruction, getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { cn } from "@/lib/utils";
-const logger = new Logger("core");
+} from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/use-toast"
+
+import { TokenSelector } from "./TokenSelector"
+
+const logger = new Logger("core")
 
 export interface TokenData {
-  tokenAccount: string;
-  mint: string;
-  amount: number;
-  decimals: number;
-  value: string;
-  label: string;
+  tokenAccount: string
+  mint: string
+  amount: number
+  decimals: number
+  value: string
+  label: string
 }
 export type TransactionRecord = {
-  address: PublicKey;
-  amount: number;
-  status: TransactionStatus;
+  address: PublicKey
+  amount: number
+  status: TransactionStatus
 }
 
 export default function IndexPage() {
-  const { publicKey, connected, signAllTransactions } = useWallet();
-  const [refresh, setRefresh] = useState(false);
-  const [tokens, setTokens] = useState<TokenData[]>([]);
-  const [amount, setAmount] = useState<number>(0);
-  const [addresses, setAddresses] = useState<TransactionRecord[]>([]);
-  const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([]);
-  const { toast } = useToast();
-  const [processing, setProcessing] = useState(false);
-  const [selectedToken, setSelectedToken] = useState<string>('');
+  const { publicKey, connected, signAllTransactions } = useWallet()
+  const [refresh, setRefresh] = useState(false)
+  const [tokens, setTokens] = useState<TokenData[]>([])
+  const [amount, setAmount] = useState<number>(0)
+  const [addresses, setAddresses] = useState<TransactionRecord[]>([])
+  const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([])
+  const { toast } = useToast()
+  const [processing, setProcessing] = useState(false)
+  const [selectedToken, setSelectedToken] = useState<string>("")
 
   useEffect(() => {
     const loadTokenInfos = async () => {
-      const tlProvider = await (new TokenListProvider().resolve());
-      const tokenList = tlProvider.filterByClusterSlug('mainnet-beta').getList();
-      setTokenInfos(tokenList);
+      const tlProvider = await new TokenListProvider().resolve()
+      const tokenList = tlProvider.filterByClusterSlug("mainnet-beta").getList()
+      setTokenInfos(tokenList)
     }
 
     const getAssetsByOwner = async () => {
-      const response = await fetch(`https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=1b9c8608-b054-4f30-ab1b-cdbbfaba6e5f`);
-      const result = await response.json();
-      const accounts = result.tokens.filter((x: any) => x.amount > 0);
+      const response = await fetch(
+        `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=1b9c8608-b054-4f30-ab1b-cdbbfaba6e5f`
+      )
+      const result = await response.json()
+      const accounts = result.tokens.filter((x: any) => x.amount > 0)
       const tokens = accounts.map((x: any) => {
-        const scaledAmount = x.amount / Math.pow(10, x.decimals);
-        const tokenInfo = tokenInfos.find((y) => y.address === x.mint);
+        const scaledAmount = x.amount / Math.pow(10, x.decimals)
+        const tokenInfo = tokenInfos.find((y) => y.address === x.mint)
         return {
           tokenAccount: x.address,
           mint: x.mint,
@@ -72,27 +85,27 @@ export default function IndexPage() {
           decimals: x.decimals,
           value: x.mint,
           label: `${tokenInfo?.name} (${scaledAmount})` || x.mint,
-          name: tokenInfo?.name
+          name: tokenInfo?.name,
         }
-      });
-      setTokens(tokens.filter((x: any) => x.name !== undefined));
+      })
+      setTokens(tokens.filter((x: any) => x.name !== undefined))
     }
 
     if (tokenInfos.length === 0) {
-      loadTokenInfos();
+      loadTokenInfos()
     }
 
     if (connected && publicKey) {
-      getAssetsByOwner();
+      getAssetsByOwner()
     }
-  }, [connected, publicKey, refresh]);
+  }, [connected, publicKey, refresh])
 
   // clear transction log on disconnect
   useEffect(() => {
     if (!connected && addresses.length > 0) {
-      setAddresses([]);
+      setAddresses([])
     }
-  }, [connected]);
+  }, [connected])
 
   return (
     <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
@@ -118,12 +131,19 @@ export default function IndexPage() {
         </div>
         <div>
           <div className="inline-block p-0">
-            <TokenSelector tokens={tokens} value={selectedToken} setValue={setSelectedToken} />
+            <TokenSelector
+              tokens={tokens}
+              value={selectedToken}
+              setValue={setSelectedToken}
+            />
           </div>
           <div className="inline-block pl-2">
-            <Button variant='ghost' onClick={() => {
-              setRefresh(!refresh);
-            }}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setRefresh(!refresh)
+              }}
+            >
               <RefreshCw className="mr-2 h-4 w-4" /> Refresh
             </Button>
           </div>
@@ -140,7 +160,14 @@ export default function IndexPage() {
             </div>
           </div>
         </div>
-        <Input type="number" placeholder="Amount of tokens" onChange={(e) => { setAmount(parseInt(e.target.value || '') || 0); }} value={amount} />
+        <Input
+          type="number"
+          placeholder="Amount of tokens"
+          onChange={(e) => {
+            setAmount(parseInt(e.target.value || "") || 0)
+          }}
+          value={amount}
+        />
       </div>
       <div className="grid w-full gap-2">
         <div className="grid w-full gap-0">
@@ -157,151 +184,182 @@ export default function IndexPage() {
           placeholder={"address1\naddress2\naddress3"}
           onChange={(e) => {
             // try to parse addresses as public keys
-            const addresses = e.target.value.split("\n").map((x) => {
-              try {
-                return new PublicKey(x);
-              } catch (e) {
-                return null;
-              }
-            })
+            const addresses = e.target.value
+              .split("\n")
+              .map((x) => {
+                try {
+                  return new PublicKey(x)
+                } catch (e) {
+                  return null
+                }
+              })
               .filter((x) => x !== null)
               .map((x: PublicKey | null) => {
                 return {
                   address: x!,
                   amount: amount,
-                  status: 'pending' as TransactionStatus
+                  status: "pending" as TransactionStatus,
                 }
-              });
-            setAddresses(addresses);
+              })
+            setAddresses(addresses)
           }}
         />
-        <Button disabled={!connected} onClick={async () => {
-          if (addresses.length === 0) {
-            toast({
-              title: 'No addresses',
-              description: 'Please enter at least one address.',
-            });
-            return;
-          }
+        <Button
+          disabled={!connected}
+          onClick={async () => {
+            if (addresses.length === 0) {
+              toast({
+                title: "No addresses",
+                description: "Please enter at least one address.",
+              })
+              return
+            }
 
-          if (amount === 0) {
-            toast({
-              title: 'No amount',
-              description: 'Please enter an amount.',
-            });
-            return;
-          }
+            if (amount === 0) {
+              toast({
+                title: "No amount",
+                description: "Please enter an amount.",
+              })
+              return
+            }
 
-          if (selectedToken === '') {
-            toast({
-              title: 'No token',
-              description: 'Please select a token.',
-            });
-            return;
-          }
+            if (selectedToken === "") {
+              toast({
+                title: "No token",
+                description: "Please select a token.",
+              })
+              return
+            }
 
-          if (publicKey === null || signAllTransactions === undefined) {
-            toast({
-              title: 'No wallet',
-              description: 'Please connect a wallet.',
-            });
-            return;
-          }
+            if (publicKey === null || signAllTransactions === undefined) {
+              toast({
+                title: "No wallet",
+                description: "Please connect a wallet.",
+              })
+              return
+            }
 
-          setProcessing(true);
-          try {
-            const cm = await ConnectionManager.getInstance({
-              commitment: 'processed',
-              endpoint: "https://broken-crimson-voice.solana-mainnet.quiknode.pro/e7857fbca0c9869aa3de20a015b6a7a54c1312bc/",
-              mode: "single",
-              network: 'mainnet-beta',
-            });
-            const senderAta = getAssociatedTokenAddressSync(
-              new PublicKey(selectedToken),
-              publicKey
-            );
-
-            const txs: Transaction[] = [];
-            const recentBlockhash = (await (cm.connSync({}).getLatestBlockhashAndContext())).value.blockhash;
-            for (let i = 0; i < addresses.length; i++) {
-              const address = addresses[i];
-              const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
-              logger.info(`Sending ${amount} tokens to ${address.address.toBase58()}`);
-              address.status = 'sending';
-              setAddresses([...addresses]);
-              let ata = getAssociatedTokenAddressSync(
+            setProcessing(true)
+            try {
+              const cm = await ConnectionManager.getInstance({
+                commitment: "processed",
+                endpoint:
+                  "https://broken-crimson-voice.solana-mainnet.quiknode.pro/e7857fbca0c9869aa3de20a015b6a7a54c1312bc/",
+                mode: "single",
+                network: "mainnet-beta",
+              })
+              const senderAta = getAssociatedTokenAddressSync(
                 new PublicKey(selectedToken),
-                address.address
-              );
-              let associatedAddrIx;
-              try {
-                let account = await getAccount(cm.connSync({}), ata);
-              } catch (e) {
-                associatedAddrIx = createAssociatedTokenAccountInstruction(
-                  publicKey,
-                  ata,
-                  address.address,
-                  new PublicKey(selectedToken)
-                );
+                publicKey
+              )
+
+              const txs: Transaction[] = []
+              const recentBlockhash = (
+                await cm.connSync({}).getLatestBlockhashAndContext()
+              ).value.blockhash
+              for (let i = 0; i < addresses.length; i++) {
+                const address = addresses[i]
+                const selectedTokenInfo = tokens.find(
+                  (x) => x.mint === selectedToken
+                )!
+                logger.info(
+                  `Sending ${amount} tokens to ${address.address.toBase58()}`
+                )
+                address.status = "sending"
+                setAddresses([...addresses])
+                let ata = getAssociatedTokenAddressSync(
+                  new PublicKey(selectedToken),
+                  address.address
+                )
+                let associatedAddrIx
+                try {
+                  let account = await getAccount(cm.connSync({}), ata)
+                } catch (e) {
+                  associatedAddrIx = createAssociatedTokenAccountInstruction(
+                    publicKey,
+                    ata,
+                    address.address,
+                    new PublicKey(selectedToken)
+                  )
+                }
+                const tx = TransactionBuilder.create()
+                  .addIx(associatedAddrIx ? associatedAddrIx : [])
+                  .addSplTransferIx({
+                    fromTokenAccount: senderAta,
+                    toTokenAccount: ata,
+                    rawAmount:
+                      amount * Math.pow(10, selectedTokenInfo.decimals),
+                    owner: publicKey,
+                  })
+                  .addMemoIx({
+                    memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}`,
+                    signer: publicKey,
+                  })
+                  .build()
+                tx.recentBlockhash = recentBlockhash
+                tx.feePayer = publicKey
+                txs.push(tx)
+                logger.info(
+                  `Generated transaction for ${address.address.toBase58()}`
+                )
               }
-              const tx = TransactionBuilder
-                .create()
-                .addIx(associatedAddrIx ? associatedAddrIx : [])
-                .addSplTransferIx({
-                  fromTokenAccount: senderAta,
-                  toTokenAccount: ata,
-                  rawAmount: amount * Math.pow(10, selectedTokenInfo.decimals),
-                  owner: publicKey,
-                })
-                .addMemoIx({
-                  memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}`,
-                  signer: publicKey,
-                })
-                .build();
-              tx.recentBlockhash = recentBlockhash;
-              tx.feePayer = publicKey;
-              txs.push(tx);
-              logger.info(`Generated transaction for ${address.address.toBase58()}`);
+
+              logger.info(`Signing ${txs.length} transactions`)
+              const signedTxs = await signAllTransactions(txs)
+              logger.info(`Signed ${signedTxs.length} transactions`)
+
+              for (let i = 0; i < signedTxs.length; i++) {
+                const tx = signedTxs[i]
+                addresses[i].status = "confirming"
+                setAddresses([...addresses])
+                logger.info(
+                  `Sending transaction ${i + 1} of ${signedTxs.length}`
+                )
+                try {
+                  const txid = await cm
+                    .connSync({})
+                    .sendRawTransaction(tx.serialize())
+                  logger.info(
+                    `Sent transaction ${i + 1} of ${signedTxs.length}`,
+                    txid
+                  )
+                  addresses[i].status = "confirming"
+                  setAddresses([...addresses])
+                  await cm.connSync({}).confirmTransaction(txid)
+                  addresses[i].status = "confirmed"
+                  setAddresses([...addresses])
+                  logger.info(
+                    `Confirmed transaction ${i + 1} of ${signedTxs.length}`,
+                    txid
+                  )
+                } catch (e) {
+                  addresses[i].status = "error"
+                  setAddresses([...addresses])
+                  logger.error(
+                    `Error sending transaction ${i + 1} of ${signedTxs.length}`,
+                    e
+                  )
+                }
+              }
+            } catch (e: any) {
+              toast({
+                title: "Error",
+                description: e.message,
+              })
+              logger.error(e)
             }
 
-            logger.info(`Signing ${txs.length} transactions`);
-            const signedTxs = await signAllTransactions(txs);
-            logger.info(`Signed ${signedTxs.length} transactions`);
-
-            for (let i = 0; i < signedTxs.length; i++) {
-              const tx = signedTxs[i];
-              addresses[i].status = 'confirming';
-              setAddresses([...addresses]);
-              logger.info(`Sending transaction ${i + 1} of ${signedTxs.length}`);
-              try {
-                const txid = await cm.connSync({}).sendRawTransaction(tx.serialize());
-                logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
-                addresses[i].status = 'confirming';
-                setAddresses([...addresses]);
-                await cm.connSync({}).confirmTransaction(txid);
-                addresses[i].status = 'confirmed';
-                setAddresses([...addresses]);
-                logger.info(`Confirmed transaction ${i + 1} of ${signedTxs.length}`, txid);
-              } catch (e) {
-                addresses[i].status = 'error';
-                setAddresses([...addresses]);
-                logger.error(`Error sending transaction ${i + 1} of ${signedTxs.length}`, e);
-              }
-            }
-
-          } catch (e: any) {
-            toast({
-              title: 'Error',
-              description: e.message,
-            });
-            logger.error(e);
-          }
-
-          setProcessing(false);
-          setRefresh(!refresh);
-        }}>
-          {!processing && `Disperse ${amount} token${amount > 1 ? 's' : ''} to ${addresses.length} address${addresses.length > 1 ? 'es' : ''}`}
-          {processing && <Spinner size='small' className="dark:text-gray-600" />}
+            setProcessing(false)
+            setRefresh(!refresh)
+          }}
+        >
+          {!processing &&
+            `Disperse ${amount} token${amount > 1 ? "s" : ""} to ${
+              addresses.length
+            } address${addresses.length > 1 ? "es" : ""}`}
+          {processing && (
+            <Spinner size="small" className="dark:text-gray-600" />
+          )}
         </Button>
       </div>
       <Separator />
@@ -309,7 +367,9 @@ export default function IndexPage() {
         Transaction log
       </h1>
       <Table>
-        <TableCaption>The transaction log above will update as transactions are sent.</TableCaption>
+        <TableCaption>
+          The transaction log above will update as transactions are sent.
+        </TableCaption>
         <TableHeader>
           <TableRow>
             <TableHead className="w-[100px]">Address</TableHead>
@@ -321,38 +381,49 @@ export default function IndexPage() {
           {addresses.map((address) => {
             return (
               <TableRow>
-                <TableCell className="font-medium">{address.address.toBase58()}</TableCell>
+                <TableCell className="font-medium">
+                  {address.address.toBase58()}
+                </TableCell>
                 <TableCell>{amount}</TableCell>
                 <TableCell className="text-right">
-                  <Badge variant={
-                    address.status === 'pending' 
-                      ? 'outline' 
-                      : address.status === 'signing'
-                        ? 'secondary'
-                        : address.status === 'sending'
-                          ? 'secondary'
-                          : address.status === 'confirming'
-                            ? 'secondary'
-                            : address.status === 'confirmed'
-                              ? 'default'
-                              : 'destructive'
-                  }>{address.status.toString()}</Badge>
+                  <Badge
+                    variant={
+                      address.status === "pending"
+                        ? "outline"
+                        : address.status === "signing"
+                        ? "secondary"
+                        : address.status === "sending"
+                        ? "secondary"
+                        : address.status === "confirming"
+                        ? "secondary"
+                        : address.status === "confirmed"
+                        ? "default"
+                        : "destructive"
+                    }
+                  >
+                    {address.status.toString()}
+                  </Badge>
                 </TableCell>
               </TableRow>
-            );
+            )
           })}
         </TableBody>
       </Table>
-
     </section>
   )
 }
 
-export type TransactionStatus = 'pending' | 'signing' | 'sending' | 'confirming' | 'confirmed' | 'error';
+export type TransactionStatus =
+  | "pending"
+  | "signing"
+  | "sending"
+  | "confirming"
+  | "confirmed"
+  | "error"
 type SpinnerProps = {
-  className?: string;
-  size?: "small" | "medium" | "large";
-};
+  className?: string
+  size?: "small" | "medium" | "large"
+}
 function Spinner({ className, size = "medium" }: SpinnerProps) {
   return (
     <div role="status" className={className}>
@@ -378,5 +449,5 @@ function Spinner({ className, size = "medium" }: SpinnerProps) {
       </svg>
       <span className="sr-only">Loading...</span>
     </div>
-  );
+  )
 }

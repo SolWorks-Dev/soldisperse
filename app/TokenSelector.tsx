@@ -17,9 +17,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+
 import { TokenData } from "./page"
 
-export function TokenSelector({tokens, value, setValue }: { tokens: TokenData[]; value: string; setValue: (value: string) => void }) {
+export function TokenSelector({
+  tokens,
+  value,
+  setValue,
+}: {
+  tokens: TokenData[]
+  value: string
+  setValue: (value: string) => void
+}) {
   const [open, setOpen] = React.useState(false)
 
   return (
@@ -46,8 +55,8 @@ export function TokenSelector({tokens, value, setValue }: { tokens: TokenData[];
               <CommandItem
                 key={token.value}
                 onSelect={(currentValue) => {
-                    setValue(token.mint === value ? "" : token.mint)
-                    setOpen(false)
+                  setValue(token.mint === value ? "" : token.mint)
+                  setOpen(false)
                 }}
               >
                 <Check
