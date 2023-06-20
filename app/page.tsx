@@ -1,0 +1,382 @@
+"use client"
+
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button"
+import { TokenSelector } from "./TokenSelector";
+import { useEffect, useState } from "react";
+import { PublicKey, Transaction } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { RefreshCw } from "lucide-react";
+import { TokenInfo, TokenListProvider } from "@solana/spl-token-registry";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
+import { ConnectionManager, Logger, TransactionBuilder } from "@solworks/soltoolkit-sdk";
+import { createAssociatedTokenAccountInstruction, getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { cn } from "@/lib/utils";
+const logger = new Logger("core");
+
+export interface TokenData {
+  tokenAccount: string;
+  mint: string;
+  amount: number;
+  decimals: number;
+  value: string;
+  label: string;
+}
+export type TransactionRecord = {
+  address: PublicKey;
+  amount: number;
+  status: TransactionStatus;
+}
+
+export default function IndexPage() {
+  const { publicKey, connected, signAllTransactions } = useWallet();
+  const [refresh, setRefresh] = useState(false);
+  const [tokens, setTokens] = useState<TokenData[]>([]);
+  const [amount, setAmount] = useState<number>(0);
+  const [addresses, setAddresses] = useState<TransactionRecord[]>([]);
+  const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([]);
+  const { toast } = useToast();
+  const [processing, setProcessing] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<string>('');
+
+  useEffect(() => {
+    const loadTokenInfos = async () => {
+      const tlProvider = await (new TokenListProvider().resolve());
+      const tokenList = tlProvider.filterByClusterSlug('mainnet-beta').getList();
+      setTokenInfos(tokenList);
+    }
+
+    const getAssetsByOwner = async () => {
+      const response = await fetch(`https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=1b9c8608-b054-4f30-ab1b-cdbbfaba6e5f`);
+      const result = await response.json();
+      const accounts = result.tokens.filter((x: any) => x.amount > 0);
+      const tokens = accounts.map((x: any) => {
+        const scaledAmount = x.amount / Math.pow(10, x.decimals);
+        const tokenInfo = tokenInfos.find((y) => y.address === x.mint);
+        return {
+          tokenAccount: x.address,
+          mint: x.mint,
+          amount: x.amount,
+          decimals: x.decimals,
+          value: x.mint,
+          label: `${tokenInfo?.name} (${scaledAmount})` || x.mint,
+          name: tokenInfo?.name
+        }
+      });
+      setTokens(tokens.filter((x: any) => x.name !== undefined));
+    }
+
+    if (tokenInfos.length === 0) {
+      loadTokenInfos();
+    }
+
+    if (connected && publicKey) {
+      getAssetsByOwner();
+    }
+  }, [connected, publicKey, refresh]);
+
+  // clear transction log on disconnect
+  useEffect(() => {
+    if (!connected && addresses.length > 0) {
+      setAddresses([]);
+    }
+  }, [connected]);
+
+  return (
+    <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
+      <div className="flex max-w-[980px] flex-col items-start gap-2">
+        <p className="max-w-[700px] text-lg text-muted-foreground">
+          verb: To distribute solana or tokens to multiple adresses.
+        </p>
+        <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
+          SolDisperse
+        </h1>
+      </div>
+      <Separator />
+      <div className="grid w-full gap-2">
+        <div className="grid w-full gap-0">
+          <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
+            Select a token
+          </h1>
+          <div className="max-w-[700px] text-base text-muted-foreground">
+            <div className="inline-block">
+              Step 1: Select a token to disperse.
+            </div>
+          </div>
+        </div>
+        <div>
+          <div className="inline-block p-0">
+            <TokenSelector tokens={tokens} value={selectedToken} setValue={setSelectedToken} />
+          </div>
+          <div className="inline-block pl-2">
+            <Button variant='ghost' onClick={() => {
+              setRefresh(!refresh);
+            }}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className="grid w-full gap-2">
+        <div className="grid w-full gap-0">
+          <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
+            Enter amount
+          </h1>
+          <div className="max-w-[700px] text-lg text-muted-foreground">
+            <div className="inline-block pr-4 text-base">
+              Step 2: Enter the amount of tokens to disperse per address.
+            </div>
+          </div>
+        </div>
+        <Input type="number" placeholder="Amount of tokens" onChange={(e) => { setAmount(parseInt(e.target.value || '') || 0); }} value={amount} />
+      </div>
+      <div className="grid w-full gap-2">
+        <div className="grid w-full gap-0">
+          <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
+            Enter addresses
+          </h1>
+          <div className="max-w-[700px] text-base text-muted-foreground">
+            <div className="inline-block pr-4">
+              Step 3: Enter the addresses to disperse tokens to.
+            </div>
+          </div>
+        </div>
+        <Textarea
+          placeholder={"address1\naddress2\naddress3"}
+          onChange={(e) => {
+            // try to parse addresses as public keys
+            const addresses = e.target.value.split("\n").map((x) => {
+              try {
+                return new PublicKey(x);
+              } catch (e) {
+                return null;
+              }
+            })
+              .filter((x) => x !== null)
+              .map((x: PublicKey | null) => {
+                return {
+                  address: x!,
+                  amount: amount,
+                  status: 'pending' as TransactionStatus
+                }
+              });
+            setAddresses(addresses);
+          }}
+        />
+        <Button disabled={!connected} onClick={async () => {
+          if (addresses.length === 0) {
+            toast({
+              title: 'No addresses',
+              description: 'Please enter at least one address.',
+            });
+            return;
+          }
+
+          if (amount === 0) {
+            toast({
+              title: 'No amount',
+              description: 'Please enter an amount.',
+            });
+            return;
+          }
+
+          if (selectedToken === '') {
+            toast({
+              title: 'No token',
+              description: 'Please select a token.',
+            });
+            return;
+          }
+
+          if (publicKey === null || signAllTransactions === undefined) {
+            toast({
+              title: 'No wallet',
+              description: 'Please connect a wallet.',
+            });
+            return;
+          }
+
+          setProcessing(true);
+          try {
+            const cm = await ConnectionManager.getInstance({
+              commitment: 'processed',
+              endpoint: "https://broken-crimson-voice.solana-mainnet.quiknode.pro/e7857fbca0c9869aa3de20a015b6a7a54c1312bc/",
+              mode: "single",
+              network: 'mainnet-beta',
+            });
+            const senderAta = getAssociatedTokenAddressSync(
+              new PublicKey(selectedToken),
+              publicKey
+            );
+
+            const txs: Transaction[] = [];
+            const recentBlockhash = (await (cm.connSync({}).getLatestBlockhashAndContext())).value.blockhash;
+            for (let i = 0; i < addresses.length; i++) {
+              const address = addresses[i];
+              const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
+              logger.info(`Sending ${amount} tokens to ${address.address.toBase58()}`);
+              address.status = 'sending';
+              setAddresses([...addresses]);
+              let ata = getAssociatedTokenAddressSync(
+                new PublicKey(selectedToken),
+                address.address
+              );
+              let associatedAddrIx;
+              try {
+                let account = await getAccount(cm.connSync({}), ata);
+              } catch (e) {
+                associatedAddrIx = createAssociatedTokenAccountInstruction(
+                  publicKey,
+                  ata,
+                  address.address,
+                  new PublicKey(selectedToken)
+                );
+              }
+              const tx = TransactionBuilder
+                .create()
+                .addIx(associatedAddrIx ? associatedAddrIx : [])
+                .addSplTransferIx({
+                  fromTokenAccount: senderAta,
+                  toTokenAccount: ata,
+                  rawAmount: amount * Math.pow(10, selectedTokenInfo.decimals),
+                  owner: publicKey,
+                })
+                .addMemoIx({
+                  memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}`,
+                  signer: publicKey,
+                })
+                .build();
+              tx.recentBlockhash = recentBlockhash;
+              tx.feePayer = publicKey;
+              txs.push(tx);
+              logger.info(`Generated transaction for ${address.address.toBase58()}`);
+            }
+
+            logger.info(`Signing ${txs.length} transactions`);
+            const signedTxs = await signAllTransactions(txs);
+            logger.info(`Signed ${signedTxs.length} transactions`);
+
+            for (let i = 0; i < signedTxs.length; i++) {
+              const tx = signedTxs[i];
+              addresses[i].status = 'confirming';
+              setAddresses([...addresses]);
+              logger.info(`Sending transaction ${i + 1} of ${signedTxs.length}`);
+              try {
+                const txid = await cm.connSync({}).sendRawTransaction(tx.serialize());
+                logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
+                addresses[i].status = 'confirming';
+                setAddresses([...addresses]);
+                await cm.connSync({}).confirmTransaction(txid);
+                addresses[i].status = 'confirmed';
+                setAddresses([...addresses]);
+                logger.info(`Confirmed transaction ${i + 1} of ${signedTxs.length}`, txid);
+              } catch (e) {
+                addresses[i].status = 'error';
+                setAddresses([...addresses]);
+                logger.error(`Error sending transaction ${i + 1} of ${signedTxs.length}`, e);
+              }
+            }
+
+          } catch (e: any) {
+            toast({
+              title: 'Error',
+              description: e.message,
+            });
+            logger.error(e);
+          }
+
+          setProcessing(false);
+          setRefresh(!refresh);
+        }}>
+          {!processing && `Disperse ${amount} token${amount > 1 ? 's' : ''} to ${addresses.length} address${addresses.length > 1 ? 'es' : ''}`}
+          {processing && <Spinner size='small' className="dark:text-gray-600" />}
+        </Button>
+      </div>
+      <Separator />
+      <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
+        Transaction log
+      </h1>
+      <Table>
+        <TableCaption>The transaction log above will update as transactions are sent.</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[100px]">Address</TableHead>
+            <TableHead>Amount</TableHead>
+            <TableHead className="text-right">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {addresses.map((address) => {
+            return (
+              <TableRow>
+                <TableCell className="font-medium">{address.address.toBase58()}</TableCell>
+                <TableCell>{amount}</TableCell>
+                <TableCell className="text-right">
+                  <Badge variant={
+                    address.status === 'pending' 
+                      ? 'outline' 
+                      : address.status === 'signing'
+                        ? 'secondary'
+                        : address.status === 'sending'
+                          ? 'secondary'
+                          : address.status === 'confirming'
+                            ? 'secondary'
+                            : address.status === 'confirmed'
+                              ? 'default'
+                              : 'destructive'
+                  }>{address.status.toString()}</Badge>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+    </section>
+  )
+}
+
+export type TransactionStatus = 'pending' | 'signing' | 'sending' | 'confirming' | 'confirmed' | 'error';
+type SpinnerProps = {
+  className?: string;
+  size?: "small" | "medium" | "large";
+};
+export function Spinner({ className, size = "medium" }: SpinnerProps) {
+  return (
+    <div role="status" className={className}>
+      <svg
+        aria-hidden="true"
+        className={cn("animate-spin fill-black text-gray-200", {
+          "h-4 w-4": size === "small",
+          "h-8 w-8": size === "medium",
+          "h-12 w-12": size === "large",
+        })}
+        viewBox="0 0 100 101"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+          fill="currentColor"
+        />
+        <path
+          d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+          fill="currentFill"
+        />
+      </svg>
+      <span className="sr-only">Loading...</span>
+    </div>
+  );
+}
