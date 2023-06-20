@@ -353,7 +353,7 @@ type SpinnerProps = {
   className?: string;
   size?: "small" | "medium" | "large";
 };
-export function Spinner({ className, size = "medium" }: SpinnerProps) {
+function Spinner({ className, size = "medium" }: SpinnerProps) {
   return (
     <div role="status" className={className}>
       <svg
