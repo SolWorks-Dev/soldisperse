@@ -6,7 +6,7 @@ import {
   getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token"
-import { TokenInfo, TokenListProvider } from "@solana/spl-token-registry"
+import { TokenInfo } from "@solana/spl-token-registry"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { PublicKey, Transaction } from "@solana/web3.js"
 import {
@@ -15,7 +15,6 @@ import {
   TransactionBuilder,
 } from "@solworks/soltoolkit-sdk"
 import { RefreshCw } from "lucide-react"
-
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,7 +31,6 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-
 import { TokenSelector } from "./TokenSelector"
 
 const logger = new Logger("core")
@@ -64,9 +62,10 @@ export default function IndexPage() {
 
   useEffect(() => {
     const loadTokenInfos = async () => {
-      const tlProvider = await new TokenListProvider().resolve()
-      const tokenList = tlProvider.filterByClusterSlug("mainnet-beta").getList()
-      setTokenInfos(tokenList)
+      const response = await fetch('https://cdn.jsdelivr.net/gh/solflare-wallet/token-list@latest/solana-tokenlist.json');
+      const result = await response.json();
+      const tokenList = result.tokens as TokenInfo[];
+      setTokenInfos(tokenList);
     }
 
     const getAssetsByOwner = async () => {
@@ -92,18 +91,29 @@ export default function IndexPage() {
     }
 
     if (tokenInfos.length === 0) {
+      setProcessing(true);
       loadTokenInfos()
+        .then(() => {
+          setProcessing(false);
+        })
     }
 
     if (connected && publicKey) {
+      setProcessing(true);
       getAssetsByOwner()
+        .then(() => {
+          setProcessing(false);
+        })
     }
-  }, [connected, publicKey, refresh])
+  }, [connected, publicKey, refresh, tokenInfos])
 
   // clear transction log on disconnect
   useEffect(() => {
     if (!connected && addresses.length > 0) {
-      setAddresses([])
+      setAddresses([]);
+    }
+    if (!connected && tokens.length > 0) {
+      setTokens([]);
     }
   }, [connected])
 
@@ -111,7 +121,7 @@ export default function IndexPage() {
     <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
       <div className="flex max-w-[980px] flex-col items-start gap-2">
         <p className="max-w-[700px] text-lg text-muted-foreground">
-          verb: To distribute solana or tokens to multiple adresses.
+          verb: To distribute SPL tokens to multiple adresses.
         </p>
         <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
           SolDisperse
