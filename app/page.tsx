@@ -263,7 +263,7 @@ export default function IndexPage() {
             try {
               const cm = await ConnectionManager.getInstance({
                 commitment: "processed",
-                endpoint: "https://racial-ibbie-fast-mainnet.helius-rpc.com/",
+                endpoint: "https://mainnet.helius-rpc.com/?api-key=1b9c8608-b054-4f30-ab1b-cdbbfaba6e5f",
                 mode: "single",
                 network: "mainnet-beta",
               })
