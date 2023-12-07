@@ -263,8 +263,7 @@ export default function IndexPage() {
             try {
               const cm = await ConnectionManager.getInstance({
                 commitment: "processed",
-                endpoint:
-                  "https://broken-crimson-voice.solana-mainnet.quiknode.pro/e7857fbca0c9869aa3de20a015b6a7a54c1312bc/",
+                endpoint: "https://racial-ibbie-fast-mainnet.helius-rpc.com/",
                 mode: "single",
                 network: "mainnet-beta",
               })
