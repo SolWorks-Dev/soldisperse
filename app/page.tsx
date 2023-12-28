@@ -308,40 +308,50 @@ export default function IndexPage() {
 
               // generate transactions
               for (let i = 0; i < addresses.length; i++) {
-                const address = addresses[i]
+                const address = addresses[i];
                 const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
                 logger.info(`Sending ${amount} tokens to ${address.address.toBase58()}`);
                 address.status = "sending";
                 setAddresses([...addresses]);
-                let ata = getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address);
-                let associatedAddrIx;
                 try {
-                  await getAccount(conn, ata);
-                } catch (e) {
-                  associatedAddrIx = createAssociatedTokenAccountInstruction(
-                    publicKey,
-                    ata,
-                    address.address,
-                    new PublicKey(selectedToken)
-                  );
+                  let ata = getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address);
+                  let associatedAddrIx;
+                  try {
+                    await getAccount(conn, ata);
+                  } catch (e) {
+                    associatedAddrIx = createAssociatedTokenAccountInstruction(
+                      publicKey,
+                      ata,
+                      address.address,
+                      new PublicKey(selectedToken)
+                    );
+                  }
+                  const tx = TransactionBuilder.create()
+                    .addIx(associatedAddrIx ? associatedAddrIx : [])
+                    .addSplTransferIx({
+                      fromTokenAccount: senderAta,
+                      toTokenAccount: ata,
+                      rawAmount: amount * Math.pow(10, selectedTokenInfo.decimals),
+                      owner: publicKey,
+                    })
+                    .addMemoIx({
+                      memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
+                      signer: publicKey,
+                    })
+                    .build();
+                  tx.recentBlockhash = recentBlockhash;
+                  tx.feePayer = publicKey;
+                  txs.push(tx);
+                  logger.info(`Generated transaction for ${address.address.toBase58()}`);
+                } catch (e: any) {
+                  address.status = "error";
+                  setAddresses([...addresses]);
+                  logger.error(`Error sending transaction to ${address.address.toBase58()}`, e);
+                  toast({
+                    title: "Error",
+                    description: e.message,
+                  });
                 }
-                const tx = TransactionBuilder.create()
-                  .addIx(associatedAddrIx ? associatedAddrIx : [])
-                  .addSplTransferIx({
-                    fromTokenAccount: senderAta,
-                    toTokenAccount: ata,
-                    rawAmount: amount * Math.pow(10, selectedTokenInfo.decimals),
-                    owner: publicKey,
-                  })
-                  .addMemoIx({
-                    memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
-                    signer: publicKey,
-                  })
-                  .build();
-                tx.recentBlockhash = recentBlockhash;
-                tx.feePayer = publicKey;
-                txs.push(tx);
-                logger.info(`Generated transaction for ${address.address.toBase58()}`);
               }
 
               logger.info(`Signing ${txs.length} transactions`);
