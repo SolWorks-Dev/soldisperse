@@ -8,13 +8,12 @@ import {
 } from "@solana/spl-token"
 import { TokenInfo } from "@solana/spl-token-registry"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { PublicKey, Transaction } from "@solana/web3.js"
+import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl } from "@solana/web3.js"
 import {
-  ConnectionManager,
   Logger,
   TransactionBuilder,
 } from "@solworks/soltoolkit-sdk"
-import { RefreshCw } from "lucide-react"
+import { Copy, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,9 +31,10 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { TokenSelector } from "./TokenSelector"
+import { Popover, PopoverContent } from "@/components/ui/popover"
+import { PopoverTrigger } from "@radix-ui/react-popover"
 
-const logger = new Logger("core")
-
+const logger = new Logger("core");
 export interface TokenData {
   tokenAccount: string
   mint: string
@@ -42,23 +42,26 @@ export interface TokenData {
   decimals: number
   value: string
   label: string
-}
+};
 export type TransactionRecord = {
-  address: PublicKey
-  amount: number
-  status: TransactionStatus
-}
+  address: PublicKey;
+  amount: number;
+  status: TransactionStatus;
+  txId?: string;
+};
 
 export default function IndexPage() {
-  const { publicKey, connected, signAllTransactions } = useWallet()
-  const [refresh, setRefresh] = useState(false)
-  const [tokens, setTokens] = useState<TokenData[]>([])
-  const [amount, setAmount] = useState<number>(0)
-  const [addresses, setAddresses] = useState<TransactionRecord[]>([])
-  const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([])
-  const { toast } = useToast()
-  const [processing, setProcessing] = useState(false)
-  const [selectedToken, setSelectedToken] = useState<string>("")
+  const { publicKey, connected, signAllTransactions } = useWallet();
+  const [refresh, setRefresh] = useState(false);
+  const [tokens, setTokens] = useState<TokenData[]>([]);
+  const [amount, setAmount] = useState<number>(0);
+  const [addresses, setAddresses] = useState<TransactionRecord[]>([]);
+  const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([]);
+  const { toast } = useToast();
+  const [processing, setProcessing] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<string>("");
+  const [inputValue, setInputValue] = useState<string>('https://racial-ibbie-fast-mainnet.helius-rpc.com/');
+  const [commitment, setCommitment] = useState<Commitment>('processed');
 
   useEffect(() => {
     const loadTokenInfos = async () => {
@@ -115,7 +118,7 @@ export default function IndexPage() {
           setProcessing(false);
         })
     }
-  }, [connected, publicKey, refresh, tokenInfos])
+  }, [connected, publicKey, refresh, tokenInfos]);
 
   // clear transction log on disconnect
   useEffect(() => {
@@ -125,17 +128,53 @@ export default function IndexPage() {
     if (!connected && tokens.length > 0) {
       setTokens([]);
     }
-  }, [connected])
+  }, [connected]);
 
   return (
     <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
-      <div className="flex max-w-[980px] flex-col items-start gap-2">
+      <div className="flex flex-col items-start gap-2">
         <p className="max-w-[700px] text-lg text-muted-foreground">
           verb: To distribute SPL tokens to multiple adresses.
         </p>
-        <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
-          SolDisperse
-        </h1>
+
+        <div className="flex w-full items-center justify-between">
+          <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
+            SolDisperse
+          </h1>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant='outline'>Settings</Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Endpoint</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Set the RPC endpoint to use for sending transactions.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Input
+                      id="endpoint"
+                      placeholder="Endpoint"
+                      className="col-span-2 h-8"
+                      value={inputValue}
+                      onChange={(e) => {
+                        console.log(e.target.value);
+                        setInputValue(e.target.value)
+                        toast({
+                          title: "Endpoint updated",
+                          description: "The endpoint has been updated to " + e.target.value,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
       <Separator />
       <div className="grid w-full gap-2">
@@ -184,7 +223,7 @@ export default function IndexPage() {
           type="number"
           placeholder="Amount of tokens"
           onChange={(e) => {
-            setAmount(parseInt(e.target.value || "") || 0)
+            setAmount(parseFloat(e.target.value || "") || 0)
           }}
           value={amount}
         />
@@ -261,115 +300,118 @@ export default function IndexPage() {
 
             setProcessing(true)
             try {
-              const cm = await ConnectionManager.getInstance({
-                commitment: "processed",
-                endpoint: "https://racial-ibbie-fast-mainnet.helius-rpc.com/",
-                mode: "single",
-                network: "mainnet-beta",
-              })
-              const senderAta = getAssociatedTokenAddressSync(
-                new PublicKey(selectedToken),
-                publicKey
-              )
+              console.log(`Endpoint: ${inputValue}`);
+              const senderAta = getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey);
+              const txs: Transaction[] = [];
+              const conn = new Connection(inputValue, commitment);
+              const recentBlockhash = (await conn.getLatestBlockhashAndContext('max')).value.blockhash;
 
-              const txs: Transaction[] = []
-              const recentBlockhash = (
-                await cm.connSync({}).getLatestBlockhashAndContext()
-              ).value.blockhash
+              // generate transactions
               for (let i = 0; i < addresses.length; i++) {
                 const address = addresses[i]
-                const selectedTokenInfo = tokens.find(
-                  (x) => x.mint === selectedToken
-                )!
-                logger.info(
-                  `Sending ${amount} tokens to ${address.address.toBase58()}`
-                )
-                address.status = "sending"
-                setAddresses([...addresses])
-                let ata = getAssociatedTokenAddressSync(
-                  new PublicKey(selectedToken),
-                  address.address
-                )
-                let associatedAddrIx
+                const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
+                logger.info(`Sending ${amount} tokens to ${address.address.toBase58()}`);
+                address.status = "sending";
+                setAddresses([...addresses]);
+                let ata = getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address);
+                let associatedAddrIx;
                 try {
-                  let account = await getAccount(cm.connSync({}), ata)
+                  await getAccount(conn, ata);
                 } catch (e) {
                   associatedAddrIx = createAssociatedTokenAccountInstruction(
                     publicKey,
                     ata,
                     address.address,
                     new PublicKey(selectedToken)
-                  )
+                  );
                 }
                 const tx = TransactionBuilder.create()
                   .addIx(associatedAddrIx ? associatedAddrIx : [])
                   .addSplTransferIx({
                     fromTokenAccount: senderAta,
                     toTokenAccount: ata,
-                    rawAmount:
-                      amount * Math.pow(10, selectedTokenInfo.decimals),
+                    rawAmount: amount * Math.pow(10, selectedTokenInfo.decimals),
                     owner: publicKey,
                   })
                   .addMemoIx({
-                    memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}`,
+                    memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
                     signer: publicKey,
                   })
-                  .build()
-                tx.recentBlockhash = recentBlockhash
-                tx.feePayer = publicKey
-                txs.push(tx)
-                logger.info(
-                  `Generated transaction for ${address.address.toBase58()}`
-                )
+                  .build();
+                tx.recentBlockhash = recentBlockhash;
+                tx.feePayer = publicKey;
+                txs.push(tx);
+                logger.info(`Generated transaction for ${address.address.toBase58()}`);
               }
 
-              logger.info(`Signing ${txs.length} transactions`)
-              const signedTxs = await signAllTransactions(txs)
-              logger.info(`Signed ${signedTxs.length} transactions`)
+              logger.info(`Signing ${txs.length} transactions`);
+              const signedTxs = await signAllTransactions(txs);
+              logger.info(`Signed ${signedTxs.length} transactions`);
 
+              // send transactions
               for (let i = 0; i < signedTxs.length; i++) {
-                const tx = signedTxs[i]
-                addresses[i].status = "confirming"
-                setAddresses([...addresses])
-                logger.info(
-                  `Sending transaction ${i + 1} of ${signedTxs.length}`
-                )
+                const tx = signedTxs[i];
+                addresses[i].status = "sending";
+                setAddresses([...addresses]);
+                logger.info(`Sending transaction ${i + 1} of ${signedTxs.length}`);
                 try {
-                  const txid = await cm
-                    .connSync({})
-                    .sendRawTransaction(tx.serialize())
-                  logger.info(
-                    `Sent transaction ${i + 1} of ${signedTxs.length}`,
-                    txid
-                  )
-                  addresses[i].status = "confirming"
-                  setAddresses([...addresses])
-                  await cm.connSync({}).confirmTransaction(txid)
-                  addresses[i].status = "confirmed"
-                  setAddresses([...addresses])
-                  logger.info(
-                    `Confirmed transaction ${i + 1} of ${signedTxs.length}`,
-                    txid
-                  )
-                } catch (e) {
-                  addresses[i].status = "error"
-                  setAddresses([...addresses])
-                  logger.error(
-                    `Error sending transaction ${i + 1} of ${signedTxs.length}`,
-                    e
-                  )
+                  const txid = await conn.sendRawTransaction(tx.serialize());
+                  logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
+                  addresses[i].status = "confirming";
+                  addresses[i].txId = txid;
+                  setAddresses([...addresses]);
+                  toast({
+                    title: "Transaction sent",
+                    description: `Transaction ${i + 1} of ${signedTxs.length} sent`,
+                  });
+                } catch (e: any) {
+                  addresses[i].status = "error";
+                  setAddresses([...addresses]);
+                  logger.error(`Error sending transaction ${i + 1} of ${signedTxs.length}`, e);
+                  toast({
+                    title: "Error",
+                    description: e.message,
+                  });
                 }
               }
+
+              // confirm transactions
+              for (let i = 0; i < addresses.length; i++) {
+                const entry = addresses[i];
+                if (entry.status === "confirming" && entry.txId) {
+                  logger.info(`Confirming transaction ${i + 1} of ${signedTxs.length}`);
+                  try {
+                    const txid = entry.txId!;
+                    await conn.confirmTransaction(txid, commitment);
+                    addresses[i].status = "confirmed";
+                    setAddresses([...addresses]);
+                    logger.info(`Confirmed transaction ${i + 1} of ${signedTxs.length}`, txid);
+                    toast({
+                      title: "Transaction confirmed",
+                      description: `Transaction ${i + 1} of ${signedTxs.length} confirmed`,
+                    })
+                  } catch (e: any) {
+                    addresses[i].status = "error";
+                    setAddresses([...addresses]);
+                    logger.error(`Error sending transaction ${i + 1} of ${signedTxs.length}`, e);
+                    toast({
+                      title: "Error",
+                      description: e.message,
+                    })
+                  }
+                }
+              }
+
             } catch (e: any) {
               toast({
                 title: "Error",
                 description: e.message,
-              })
-              logger.error(e)
+              });
+              logger.error(e);
             }
 
-            setProcessing(false)
-            setRefresh(!refresh)
+            setProcessing(false);
+            setRefresh(!refresh);
           }}
         >
           {!processing &&
@@ -383,7 +425,7 @@ export default function IndexPage() {
       </div>
       <Separator />
       <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
-        Transaction log
+        Transaction log {addresses.length > 0 && `(${addresses.length})`}
       </h1>
       <Table>
         <TableCaption>
@@ -391,19 +433,65 @@ export default function IndexPage() {
         </TableCaption>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-[100px]">ID</TableHead>
             <TableHead className="w-[100px]">Address</TableHead>
             <TableHead>Amount</TableHead>
+            <TableHead className="text-right">TX ID</TableHead>
             <TableHead className="text-right">Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {addresses.map((address) => {
+          {addresses.map((address, index) => {
             return (
               <TableRow>
                 <TableCell className="font-medium">
-                  {address.address.toBase58()}
+                  {index}
+                </TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex items-center justify-between gap-2">
+                    <a
+                      href={`https://solana.fm/address/${address.address.toBase58()}?cluster=mainnet-alpha`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-500 underline"
+                    >
+                      {address.address.toBase58().substring(0, 24)}...
+                    </a>
+                    <Button size='sm' variant='outline' onClick={() => {
+                      navigator.clipboard.writeText(address.address.toBase58());
+                      toast({
+                        title: "Copied",
+                        description: `Address copied to clipboard`,
+                      });
+                    }}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </TableCell>
                 <TableCell>{amount}</TableCell>
+                <TableCell className="text-right">
+                  {address.txId && (
+                    <div className="flex items-center justify-between gap-2">
+                      <a
+                        href={`https://solana.fm/tx/${address.txId}?cluster=mainnet-alpha`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-500 underline"
+                      >
+                        {address.txId.substring(0, 52)}...
+                      </a>
+                      <Button size='sm' variant='outline' onClick={() => {
+                        navigator.clipboard.writeText(address.txId!);
+                        toast({
+                          title: "Copied",
+                          description: `Transaction ID copied to clipboard`,
+                        });
+                      }}>
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="text-right">
                   <Badge
                     variant={
