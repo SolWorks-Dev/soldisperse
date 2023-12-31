@@ -16,7 +16,7 @@ import {
 } from "@solana/wallet-adapter-react-ui"
 import { UnsafeBurnerWalletAdapter } from "@solana/wallet-adapter-wallets"
 import { clusterApiUrl } from "@solana/web3.js"
-import { Mail } from "lucide-react"
+import { Coffee, Mail } from "lucide-react"
 
 import { siteConfig } from "@/config/site"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -61,7 +61,15 @@ export function SiteHeader() {
         <div className="container flex h-20 items-center space-x-4 sm:justify-between sm:space-x-0">
           <MainNav items={siteConfig.mainNav} />
           <div className="flex flex-1 items-center justify-end space-x-4">
-            <nav className="flex items-center space-x-1">
+            <nav className="flex items-center space-x-2">
+              <Link
+                href={siteConfig.links.donate}
+                className={buttonVariants({ variant: 'outline' })}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <><Coffee className="mr-2 h-4 w-4" /> Donate a coffee</>
+              </Link>
               <Link
                 href={siteConfig.links.github}
                 target="_blank"

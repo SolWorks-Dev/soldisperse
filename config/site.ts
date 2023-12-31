@@ -9,5 +9,6 @@ export const siteConfig = {
     twitter: "https://twitter.com/zhesolworks",
     github: "https://github.com/zhe-t",
     docs: "https://docs.solworks.dev",
+    donate: "https://www.hel.io/pay/6554bb99d059b4b733a9097c"
   },
 }
