@@ -118,7 +118,18 @@ export default function IndexPage() {
       getAssetsByOwner()
         .then(() => {
           setProcessing(false);
+          toast({
+            title: "Loaded",
+            description: "Loaded token data for " + publicKey.toBase58().substring(0, 4) + "..." + publicKey.toBase58().substring(publicKey.toBase58().length - 4),
+          });
         })
+        .catch((e) => {
+          setProcessing(false);
+          toast({
+            title: "Error",
+            description: e.message,
+          });
+        });
     }
   }, [connected, publicKey, refresh, tokenInfos]);
 
@@ -316,16 +327,14 @@ export default function IndexPage() {
           </div>
         </div>
         <div>
-          <div className="inline-block p-0">
+          <div className="flex items-center justify-between gap-2">
             <TokenSelector
               tokens={tokens}
               value={selectedToken}
               setValue={setSelectedToken}
             />
-          </div>
-          <div className="inline-block pl-2">
             <Button
-              variant="ghost"
+              variant='default'
               onClick={() => {
                 setRefresh(!refresh)
               }}
