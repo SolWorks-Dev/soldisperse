@@ -62,6 +62,8 @@ export default function IndexPage() {
   const [selectedToken, setSelectedToken] = useState<string>("");
   const [inputValue, setInputValue] = useState<string>('https://racial-ibbie-fast-mainnet.helius-rpc.com/');
   const [commitment, setCommitment] = useState<Commitment>('processed');
+  const [enableVariableTokenAmounts, setEnableVariableTokenAmounts] = useState<boolean>(false);
+  const [defaultConnectionTimeout, setDefaultConnectionTimeout] = useState<number>(120);
 
   useEffect(() => {
     const loadTokenInfos = async () => {
@@ -172,6 +174,131 @@ export default function IndexPage() {
                   </div>
                 </div>
               </div>
+              <Separator style={{ marginTop: 20, marginBottom: 20 }} />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Commitment</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Set the commitment level to use for sending transactions.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Button
+                      variant={commitment === 'processed' ? 'default' : 'outline'}
+                      onClick={() => {
+                        setCommitment('processed');
+                        toast({
+                          title: "Commitment updated",
+                          description: "The commitment has been updated to processed",
+                        });
+                      }}
+                    >
+                      Processed
+                    </Button>
+                    <Button
+                      variant={commitment === 'confirmed' ? 'default' : 'outline'}
+                      onClick={() => {
+                        setCommitment('confirmed');
+                        toast({
+                          title: "Commitment updated",
+                          description: "The commitment has been updated to confirmed",
+                        });
+                      }}
+                    >
+                      Confirmed
+                    </Button>
+                    <Button
+                      variant={commitment === 'finalized' ? 'default' : 'outline'}
+                      onClick={() => {
+                        setCommitment('finalized');
+                        toast({
+                          title: "Commitment updated",
+                          description: "The commitment has been updated to finalized",
+                        });
+                      }}
+                    >
+                      Finalized
+                    </Button>
+                    <Button
+                      variant={commitment === 'recent' ? 'default' : 'outline'}
+                      onClick={() => {
+                        setCommitment('recent');
+                        toast({
+                          title: "Commitment updated",
+                          description: "The commitment has been updated to recent",
+                        });
+                      }}
+                    >
+                      Recent
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <Separator style={{ marginTop: 20, marginBottom: 20 }} />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Variable token amounts</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Allow variable token amounts per address.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Button
+                      variant={enableVariableTokenAmounts ? 'default' : 'outline'}
+                      onClick={() => {
+                        setEnableVariableTokenAmounts(true);
+                        toast({
+                          title: "Variable token amounts updated",
+                          description: "Variable token amounts have been updated to " + true,
+                        });
+                      }}
+                    >
+                      Enable
+                    </Button>
+                    <Button
+                      variant={!enableVariableTokenAmounts ? 'default' : 'outline'}
+                      onClick={() => {
+                        setEnableVariableTokenAmounts(false);
+                        toast({
+                          title: "Variable token amounts updated",
+                          description: "Variable token amounts have been updated to " + false,
+                        });
+                      }}
+                    >
+                      Disable
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <Separator style={{ marginTop: 20, marginBottom: 20 }} />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Default connection timeout</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Set the default connection timeout for transactions in seconds.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Input
+                      id="defaultConnectionTimeout"
+                      placeholder="Default connection timeout"
+                      className="col-span-2 h-8"
+                      value={defaultConnectionTimeout}
+                      onChange={(e) => {
+                        console.log(e.target.value);
+                        setDefaultConnectionTimeout(parseFloat(e.target.value));
+                        toast({
+                          title: "Default connection timeout updated",
+                          description: "The default connection timeout has been updated to " + e.target.value,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
@@ -226,6 +353,7 @@ export default function IndexPage() {
             setAmount(parseFloat(e.target.value || "") || 0)
           }}
           value={amount}
+          disabled={enableVariableTokenAmounts}
         />
       </div>
       <div className="grid w-full gap-2">
@@ -240,27 +368,60 @@ export default function IndexPage() {
           </div>
         </div>
         <Textarea
-          placeholder={"address1\naddress2\naddress3"}
+          placeholder={enableVariableTokenAmounts ? 'address1,amount1\naddress2,amount2\naddress3,amount3' : "address1\naddress2\naddress3"}
           onChange={(e) => {
-            // try to parse addresses as public keys
-            const addresses = e.target.value
-              .split("\n")
-              .map((x) => {
-                try {
-                  return new PublicKey(x)
-                } catch (e) {
-                  return null
-                }
-              })
-              .filter((x) => x !== null)
-              .map((x: PublicKey | null) => {
-                return {
-                  address: x!,
-                  amount: amount,
-                  status: "pending" as TransactionStatus,
-                }
-              })
-            setAddresses(addresses)
+            if (!enableVariableTokenAmounts) {
+              // try to parse addresses as public keys
+              const addresses = e.target.value
+                .split("\n")
+                .map((x) => {
+                  try {
+                    return new PublicKey(x)
+                  } catch (e) {
+                    return null
+                  }
+                })
+                .filter((x) => x !== null)
+                .map((x: PublicKey | null) => {
+                  return {
+                    address: x!,
+                    amount: amount,
+                    status: "pending" as TransactionStatus,
+                  }
+                }) as TransactionRecord[];
+              setAddresses(addresses)
+            } else {
+              // try to parse addresses as public keys
+              const addresses = e.target.value
+                .split("\n")
+                .map((line: string) => {
+                  try {
+                    const address = line.split(',')[0];
+                    const amount = parseFloat(line.split(',')[1]);
+                    console.log(address, amount);
+                    return {
+                      address: new PublicKey(address),
+                      amount: amount,
+                      status: "pending" as TransactionStatus,
+                    }
+                  } catch (e) {
+                    return {
+                      address: PublicKey.default,
+                      amount: 0,
+                      status: "pending" as TransactionStatus,
+                    }
+                  }
+                })
+                .filter((x) => x.address !== null && x.address !== PublicKey.default && x.amount !== 0)
+                .map((x: TransactionRecord) => {
+                  return {
+                    address: x.address!,
+                    amount: x.amount,
+                    status: "pending" as TransactionStatus,
+                  }
+                }) as TransactionRecord[];
+              setAddresses(addresses)
+            }
           }}
         />
         <Button
@@ -274,7 +435,7 @@ export default function IndexPage() {
               return
             }
 
-            if (amount === 0) {
+            if (amount === 0 && !enableVariableTokenAmounts) {
               toast({
                 title: "No amount",
                 description: "Please enter an amount.",
@@ -303,14 +464,18 @@ export default function IndexPage() {
               console.log(`Endpoint: ${inputValue}`);
               const senderAta = getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey);
               const txs: Transaction[] = [];
-              const conn = new Connection(inputValue, commitment);
+              const conn = new Connection(inputValue, {
+                commitment: commitment,
+                confirmTransactionInitialTimeout: defaultConnectionTimeout * 1000,
+              });
               const recentBlockhash = (await conn.getLatestBlockhashAndContext('max')).value.blockhash;
 
               // generate transactions
               for (let i = 0; i < addresses.length; i++) {
                 const address = addresses[i];
+                const amountToSend = enableVariableTokenAmounts ? address.amount : amount;
                 const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
-                logger.info(`Sending ${amount} tokens to ${address.address.toBase58()}`);
+                logger.info(`Sending ${amountToSend} tokens to ${address.address.toBase58()}`);
                 address.status = "sending";
                 setAddresses([...addresses]);
                 try {
@@ -331,11 +496,11 @@ export default function IndexPage() {
                     .addSplTransferIx({
                       fromTokenAccount: senderAta,
                       toTokenAccount: ata,
-                      rawAmount: amount * Math.pow(10, selectedTokenInfo.decimals),
+                      rawAmount: amountToSend * Math.pow(10, selectedTokenInfo.decimals),
                       owner: publicKey,
                     })
                     .addMemoIx({
-                      memo: `Dispersed ${amount} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
+                      memo: `Dispersed ${amountToSend} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
                       signer: publicKey,
                     })
                     .build();
@@ -425,7 +590,7 @@ export default function IndexPage() {
           }}
         >
           {!processing &&
-            `Disperse ${amount} token${amount > 1 ? "s" : ""} to ${
+            `Disperse token${amount > 1 ? "s" : ""} to ${
               addresses.length
             } address${addresses.length > 1 ? "es" : ""}`}
           {processing && (
@@ -478,7 +643,7 @@ export default function IndexPage() {
                     </Button>
                   </div>
                 </TableCell>
-                <TableCell>{amount}</TableCell>
+                <TableCell>{address.amount}</TableCell>
                 <TableCell className="text-right">
                   {address.txId && (
                     <div className="flex items-center justify-between gap-2">
