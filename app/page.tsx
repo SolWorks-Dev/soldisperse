@@ -564,34 +564,30 @@ export default function IndexPage() {
               }
 
               // confirm transactions in parallel
-              const chunks = chunkArray(addresses, 10);
-              for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                await Promise.all(chunk.map(async (address, index) => {
-                  if (address.status === "confirming" && address.txId) {
-                    logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
-                    try {
-                      const txid = address.txId!;
-                      await conn.confirmTransaction(txid, commitment);
-                      addresses[index].status = "confirmed";
-                      setAddresses([...addresses]);
-                      logger.info(`Confirmed transaction ${index + 1} of ${signedTxs.length}`, txid);
-                      toast({
-                        title: "Transaction confirmed",
-                        description: `Transaction ${index + 1} of ${signedTxs.length} confirmed`,
-                      })
-                    } catch (e: any) {
-                      addresses[index].status = "error";
-                      setAddresses([...addresses]);
-                      logger.error(`Error sending transaction ${index + 1} of ${signedTxs.length}`, e);
-                      toast({
-                        title: "Error",
-                        description: e.message,
-                      })
-                    }
+              await Promise.all(addresses.map(async (address, index) => {
+                if (address.status === "confirming" && address.txId) {
+                  logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
+                  try {
+                    const txid = address.txId!;
+                    await conn.confirmTransaction(txid, commitment);
+                    addresses[index].status = "confirmed";
+                    setAddresses([...addresses]);
+                    logger.info(`Confirmed transaction ${index + 1} of ${signedTxs.length}`, txid);
+                    toast({
+                      title: "Transaction confirmed",
+                      description: `Transaction ${index + 1} of ${signedTxs.length} confirmed`,
+                    })
+                  } catch (e: any) {
+                    addresses[index].status = "error";
+                    setAddresses([...addresses]);
+                    logger.error(`Error sending transaction ${index + 1} of ${signedTxs.length}`, e);
+                    toast({
+                      title: "Error",
+                      description: e.message,
+                    })
                   }
-                }));
-              }
+                }
+              }));
 
             } catch (e: any) {
               toast({
