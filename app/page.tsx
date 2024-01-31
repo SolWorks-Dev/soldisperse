@@ -8,7 +8,7 @@ import {
 } from "@solana/spl-token"
 import { TokenInfo } from "@solana/spl-token-registry"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl } from "@solana/web3.js"
+import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl, ComputeBudgetProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
 import {
   Logger,
   TransactionBuilder,
@@ -35,6 +35,9 @@ import { Popover, PopoverContent } from "@/components/ui/popover"
 import { PopoverTrigger } from "@radix-ui/react-popover"
 
 const logger = new Logger("core");
+const PRIORITY_RATE = 100; // MICRO_LAMPORTS 
+const SEND_AMT = 0.001 * LAMPORTS_PER_SOL;
+const PRIORITY_FEE_IX = ComputeBudgetProgram.setComputeUnitPrice({microLamports: PRIORITY_RATE});
 export interface TokenData {
   tokenAccount: string
   mint: string
@@ -505,13 +508,14 @@ export default function IndexPage() {
                     .addSplTransferIx({
                       fromTokenAccount: senderAta,
                       toTokenAccount: ata,
-                      rawAmount: amountToSend * Math.pow(10, selectedTokenInfo.decimals),
+                      rawAmount: parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
                       owner: publicKey,
                     })
                     .addMemoIx({
                       memo: `Dispersed ${amountToSend} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
                       signer: publicKey,
                     })
+                    .addIx(PRIORITY_FEE_IX)
                     .build();
                   tx.recentBlockhash = recentBlockhash;
                   tx.feePayer = publicKey;
@@ -559,31 +563,34 @@ export default function IndexPage() {
                 }
               }
 
-              // confirm transactions
-              for (let i = 0; i < addresses.length; i++) {
-                const entry = addresses[i];
-                if (entry.status === "confirming" && entry.txId) {
-                  logger.info(`Confirming transaction ${i + 1} of ${signedTxs.length}`);
-                  try {
-                    const txid = entry.txId!;
-                    await conn.confirmTransaction(txid, commitment);
-                    addresses[i].status = "confirmed";
-                    setAddresses([...addresses]);
-                    logger.info(`Confirmed transaction ${i + 1} of ${signedTxs.length}`, txid);
-                    toast({
-                      title: "Transaction confirmed",
-                      description: `Transaction ${i + 1} of ${signedTxs.length} confirmed`,
-                    })
-                  } catch (e: any) {
-                    addresses[i].status = "error";
-                    setAddresses([...addresses]);
-                    logger.error(`Error sending transaction ${i + 1} of ${signedTxs.length}`, e);
-                    toast({
-                      title: "Error",
-                      description: e.message,
-                    })
+              // confirm transactions in parallel
+              const chunks = chunkArray(addresses, 10);
+              for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                await Promise.all(chunk.map(async (address, index) => {
+                  if (address.status === "confirming" && address.txId) {
+                    logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
+                    try {
+                      const txid = address.txId!;
+                      await conn.confirmTransaction(txid, commitment);
+                      addresses[index].status = "confirmed";
+                      setAddresses([...addresses]);
+                      logger.info(`Confirmed transaction ${index + 1} of ${signedTxs.length}`, txid);
+                      toast({
+                        title: "Transaction confirmed",
+                        description: `Transaction ${index + 1} of ${signedTxs.length} confirmed`,
+                      })
+                    } catch (e: any) {
+                      addresses[index].status = "error";
+                      setAddresses([...addresses]);
+                      logger.error(`Error sending transaction ${index + 1} of ${signedTxs.length}`, e);
+                      toast({
+                        title: "Error",
+                        description: e.message,
+                      })
+                    }
                   }
-                }
+                }));
               }
 
             } catch (e: any) {
@@ -741,4 +748,16 @@ function Spinner({ className, size = "medium" }: SpinnerProps) {
       <span className="sr-only">Loading...</span>
     </div>
   )
+}
+
+function chunkArray(array: any[], len: number): any[][] {
+  var chunks: any[] = [],
+    i = 0,
+    n = array.length;
+
+  while (i < n) {
+    chunks.push(array.slice(i, (i += len)));
+  }
+
+  return chunks;
 }
