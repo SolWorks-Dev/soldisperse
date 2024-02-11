@@ -8,7 +8,7 @@ import {
 } from "@solana/spl-token"
 import { TokenInfo } from "@solana/spl-token-registry"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl, ComputeBudgetProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
+import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl, ComputeBudgetProgram, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js"
 import {
   Logger,
   TransactionBuilder,
@@ -35,16 +35,17 @@ import { Popover, PopoverContent } from "@/components/ui/popover"
 import { PopoverTrigger } from "@radix-ui/react-popover"
 
 const logger = new Logger("core");
-const PRIORITY_RATE = 100; // MICRO_LAMPORTS 
-const SEND_AMT = 0.001 * LAMPORTS_PER_SOL;
+const PRIORITY_RATE = 100;
 const PRIORITY_FEE_IX = ComputeBudgetProgram.setComputeUnitPrice({microLamports: PRIORITY_RATE});
+const SOL_MINT = "11111111111111111111111111111111" // this is not a real mint, just a placeholder for SOL
 export interface TokenData {
-  tokenAccount: string
-  mint: string
-  amount: number
-  decimals: number
-  value: string
-  label: string
+  tokenAccount: string;
+  mint: string;
+  amount: number;
+  decimals: number;
+  value: string;
+  label: string;
+  name: string;
 };
 export type TransactionRecord = {
   address: PublicKey;
@@ -55,12 +56,12 @@ export type TransactionRecord = {
 
 export default function IndexPage() {
   const { publicKey, connected, signAllTransactions } = useWallet();
+  const { toast } = useToast();
   const [refresh, setRefresh] = useState(false);
   const [tokens, setTokens] = useState<TokenData[]>([]);
   const [amount, setAmount] = useState<number>(0);
   const [addresses, setAddresses] = useState<TransactionRecord[]>([]);
   const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([]);
-  const { toast } = useToast();
   const [processing, setProcessing] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string>("");
   const [inputValue, setInputValue] = useState<string>('https://racial-ibbie-fast-mainnet.helius-rpc.com/');
@@ -90,22 +91,36 @@ export default function IndexPage() {
       const response = await fetch(
         `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=1b9c8608-b054-4f30-ab1b-cdbbfaba6e5f`
       )
-      const result = await response.json()
-      const accounts = result.tokens.filter((x: any) => x.amount > 0)
-      const tokens = accounts.map((x: any) => {
-        const scaledAmount = x.amount / Math.pow(10, x.decimals)
-        const tokenInfo = tokenInfos.find((y) => y.address === x.mint)
-        return {
-          tokenAccount: x.address,
-          mint: x.mint,
-          amount: x.amount,
-          decimals: x.decimals,
-          value: x.mint,
-          label: `${tokenInfo?.name} (${scaledAmount})` || x.mint,
-          name: tokenInfo?.name,
-        }
-      })
-      setTokens(tokens.filter((x: any) => x.name !== undefined))
+      const result = await response.json();
+      const solBalance = result.nativeBalance;
+      const accounts = result.tokens.filter((x: any) => x.amount > 0);
+      const tokens: TokenData[] = accounts
+        .map((x: any) => {
+          const scaledAmount = x.amount / Math.pow(10, x.decimals)
+          const tokenInfo = tokenInfos.find((y) => y.address === x.mint)
+          return {
+            tokenAccount: x.address,
+            mint: x.mint,
+            amount: x.amount,
+            decimals: x.decimals,
+            value: x.mint,
+            label: `${tokenInfo?.name} (${scaledAmount})` || x.mint,
+            name: tokenInfo?.name,
+          }
+        })
+        .filter((x: any) => x.name !== undefined);
+      setTokens([
+        {
+          tokenAccount: publicKey!.toBase58(),
+          mint: SOL_MINT,
+          amount: solBalance,
+          decimals: 9,
+          value: SOL_MINT,
+          label: `SOL (${solBalance/ 10 ** 9})`,
+          name: "SOL",
+        },
+        ...tokens,
+      ]);
     }
 
     if (tokenInfos.length === 0) {
@@ -474,80 +489,116 @@ export default function IndexPage() {
             setProcessing(true)
             try {
               console.log(`Endpoint: ${inputValue}`);
-              const senderAta = getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey);
-              const txs: Transaction[] = [];
-              const conn = new Connection(inputValue, {
+              const config = {
                 commitment: commitment,
                 confirmTransactionInitialTimeout: defaultConnectionTimeout * 1000,
-              });
+              };
+              const txs: Transaction[] = [];
+              const conn = new Connection(inputValue, config);
               const recentBlockhash = (await conn.getLatestBlockhashAndContext('max')).value.blockhash;
 
               // generate transactions
-              for (let i = 0; i < addresses.length; i++) {
-                const address = addresses[i];
-                const amountToSend = enableVariableTokenAmounts ? address.amount : amount;
-                const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
-                logger.info(`Sending ${amountToSend} tokens to ${address.address.toBase58()}`);
-                address.status = "sending";
-                setAddresses([...addresses]);
-                try {
-                  let ata = getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address);
-                  let associatedAddrIx;
-                  try {
-                    await getAccount(conn, ata);
-                  } catch (e) {
-                    associatedAddrIx = createAssociatedTokenAccountInstruction(
-                      publicKey,
-                      ata,
-                      address.address,
-                      new PublicKey(selectedToken)
-                    );
-                  }
+              if (selectedToken === SOL_MINT) {
+                // bundle 20 addresses per transaction
+                const chunks = chunkArray(addresses, 20);
+                for (let i = 0; i < chunks.length; i++) {
+                  const chunk = chunks[i];
+                  const ixs = chunk.map((address) => {
+                    return SystemProgram.transfer({
+                      fromPubkey: publicKey,
+                      toPubkey: address.address,
+                      lamports: amount * LAMPORTS_PER_SOL,
+                    });
+                  });
                   const tx = TransactionBuilder.create()
-                    .addIx(associatedAddrIx ? associatedAddrIx : [])
-                    .addSplTransferIx({
-                      fromTokenAccount: senderAta,
-                      toTokenAccount: ata,
-                      rawAmount: parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
-                      owner: publicKey,
-                    })
-                    .addMemoIx({
-                      memo: `Dispersed ${amountToSend} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
-                      signer: publicKey,
-                    })
+                    .addIx(ixs)
                     .addIx(PRIORITY_FEE_IX)
                     .build();
                   tx.recentBlockhash = recentBlockhash;
                   tx.feePayer = publicKey;
                   txs.push(tx);
-                  logger.info(`Generated transaction for ${address.address.toBase58()}`);
-                } catch (e: any) {
-                  address.status = "error";
+                  logger.info(`Generated transaction for chunk ${i + 1} of ${chunks.length}`);
+                  // // update status
+                  // for (let j = 0; j < chunk.length; j++) {
+                  //   chunk[j].status = "sending";
+                  // }
+                }
+              } else {
+                for (let i = 0; i < addresses.length; i++) {
+                  const address = addresses[i];
+                  const amountToSend = enableVariableTokenAmounts ? address.amount : amount;
+                  const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
+                  logger.info(`Sending ${amountToSend} tokens to ${address.address.toBase58()}`);
+                  address.status = "sending";
                   setAddresses([...addresses]);
-                  logger.error(`Error sending transaction to ${address.address.toBase58()}`, e);
-                  toast({
-                    title: "Error",
-                    description: e.message,
-                  });
+                  try {
+                    const tx = (await (TransactionBuilder.create()
+                      .addSplTransferIx({
+                        fromTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey),
+                        toTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address),
+                        rawAmount: parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
+                        owner: publicKey,
+                      })
+                      .addCreateTokenAccountIx({
+                        connectionOrConnectionManager: conn,
+                        mint: new PublicKey(selectedToken),
+                        owner: address.address,
+                        payer: publicKey,
+                      })))
+                      .addMemoIx({
+                        memo: `Dispersed ${amountToSend} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
+                        signer: publicKey,
+                      })
+                      .addIx(PRIORITY_FEE_IX)
+                      .build();
+                    tx.recentBlockhash = recentBlockhash;
+                    tx.feePayer = publicKey;
+                    txs.push(tx);
+                    logger.info(`Generated transaction for ${address.address.toBase58()}`);
+  
+                  } catch (e: any) {
+                    address.status = "error";
+                    setAddresses([...addresses]);
+                    logger.error(`Error sending transaction to ${address.address.toBase58()}`, e);
+                    toast({
+                      title: "Error",
+                      description: e.message,
+                    });
+                  }
                 }
               }
+
 
               logger.info(`Signing ${txs.length} transactions`);
               const signedTxs = await signAllTransactions(txs);
               logger.info(`Signed ${signedTxs.length} transactions`);
 
               // send transactions
+              const sigs = [];
               for (let i = 0; i < signedTxs.length; i++) {
                 const tx = signedTxs[i];
-                addresses[i].status = "sending";
+                const involvedAddresses = tx.instructions.map((ix) => { return ix.keys.map((key) => key.pubkey) }).flat();
+                for (let j = 0; j < addresses.length; j++) {
+                  if (involvedAddresses.includes(addresses[j].address)) {
+                    addresses[j].status = "sending";
+                  }
+                }
                 setAddresses([...addresses]);
+
                 logger.info(`Sending transaction ${i + 1} of ${signedTxs.length}`);
                 try {
                   const txid = await conn.sendRawTransaction(tx.serialize());
+                  sigs.push(txid);
                   logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
-                  addresses[i].status = "confirming";
-                  addresses[i].txId = txid;
+
+                  for (let j = 0; j < addresses.length; j++) {
+                    if (involvedAddresses.includes(addresses[j].address)) {
+                      addresses[j].status = "confirming";
+                      addresses[j].txId = txid;
+                    }
+                  }
                   setAddresses([...addresses]);
+
                   toast({
                     title: "Transaction sent",
                     description: `Transaction ${i + 1} of ${signedTxs.length} sent`,
@@ -564,28 +615,35 @@ export default function IndexPage() {
               }
 
               // confirm transactions in parallel
-              await Promise.all(addresses.map(async (address, index) => {
-                if (address.status === "confirming" && address.txId) {
-                  logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
-                  try {
-                    const txid = address.txId!;
-                    await conn.confirmTransaction(txid, commitment);
-                    addresses[index].status = "confirmed";
-                    setAddresses([...addresses]);
-                    logger.info(`Confirmed transaction ${index + 1} of ${signedTxs.length}`, txid);
-                    toast({
-                      title: "Transaction confirmed",
-                      description: `Transaction ${index + 1} of ${signedTxs.length} confirmed`,
-                    })
-                  } catch (e: any) {
-                    addresses[index].status = "error";
-                    setAddresses([...addresses]);
-                    logger.error(`Error sending transaction ${index + 1} of ${signedTxs.length}`, e);
-                    toast({
-                      title: "Error",
-                      description: e.message,
-                    })
+              await Promise.all(sigs.map(async (txid, index) => {
+                logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
+                try {
+                  await conn.confirmTransaction(txid, commitment);
+                  // find the address that corresponds to this txid
+                  for (let j = 0; j < addresses.length; j++) {
+                    if (addresses[j].txId === txid) {
+                      addresses[j].status = "confirmed";
+                    }
                   }
+                  setAddresses([...addresses]);
+                  logger.info(`Confirmed transaction ${index + 1} of ${signedTxs.length}`, txid);
+                  toast({
+                    title: "Transaction confirmed",
+                    description: `Transaction ${index + 1} of ${signedTxs.length} confirmed`,
+                  })
+                } catch (e: any) {
+                  // find the address that corresponds to this txid
+                  for (let j = 0; j < addresses.length; j++) {
+                    if (addresses[j].txId === txid) {
+                      addresses[j].status = "error";
+                    }
+                  }
+                  setAddresses([...addresses]);
+                  logger.error(`Error sending transaction ${index + 1} of ${signedTxs.length}`, e);
+                  toast({
+                    title: "Error",
+                    description: e.message,
+                  })
                 }
               }));
 
