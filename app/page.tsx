@@ -68,6 +68,7 @@ export default function IndexPage() {
   const [commitment, setCommitment] = useState<Commitment>('processed');
   const [enableVariableTokenAmounts, setEnableVariableTokenAmounts] = useState<boolean>(false);
   const [defaultConnectionTimeout, setDefaultConnectionTimeout] = useState<number>(120);
+  const [useRawInput, setUseRawInput] = useState<boolean>(false);
 
   useEffect(() => {
     const loadTokenInfos = async () => {
@@ -328,6 +329,44 @@ export default function IndexPage() {
                   </div>
                 </div>
               </div>
+              <Separator style={{ marginTop: 20, marginBottom: 20 }} />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Use raw input</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Use raw input for amounts.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Button
+                      variant={useRawInput ? 'default' : 'outline'}
+                      onClick={() => {
+                        setUseRawInput(true);
+                        toast({
+                          title: "Use raw input updated",
+                          description: "Use raw input has been updated to " + true,
+                        });
+                      }}
+                    >
+                      Enable
+                    </Button>
+                    <Button
+                      variant={!useRawInput ? 'default' : 'outline'}
+                      onClick={() => {
+                        setUseRawInput(false);
+                        toast({
+                          title: "Use raw input updated",
+                          description: "Use raw input has been updated to " + false,
+                        });
+                      }}
+                    >
+                      Disable
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
             </PopoverContent>
           </Popover>
         </div>
@@ -507,7 +546,7 @@ export default function IndexPage() {
                     return SystemProgram.transfer({
                       fromPubkey: publicKey,
                       toPubkey: address.address,
-                      lamports: amount * LAMPORTS_PER_SOL,
+                      lamports: useRawInput ? amount : amount * LAMPORTS_PER_SOL,
                     });
                   });
                   const tx = TransactionBuilder.create()
@@ -536,7 +575,7 @@ export default function IndexPage() {
                       .addSplTransferIx({
                         fromTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey),
                         toTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address),
-                        rawAmount: parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
+                        rawAmount: useRawInput ? parseInt(amountToSend.toFixed(0)) : parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
                         owner: publicKey,
                       })
                       .addCreateTokenAccountIx({
