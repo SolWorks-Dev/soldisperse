@@ -167,7 +167,7 @@ export default function IndexPage() {
 
         <div className="flex w-full items-center justify-between">
           <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
-            SolDisperse
+            SolDisperse for FWOA
           </h1>
           <Popover>
             <PopoverTrigger asChild>
