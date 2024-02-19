@@ -82,7 +82,19 @@ export default function IndexPage() {
         "tags": [],
         "verified": true,
         "holders": null
-      }];
+      },
+      {
+        "chainId": 101,
+        "name": "Founder wif out abs",
+        "symbol": "FWOA",
+        "address": "62U5zYJadvquCqvtqxaWfZmpLU8iT59J8z3BEfVc3Q92",
+        "decimals": 6,
+        "logoURI": "https://bafkreia7yu6lx35627q766bl6uc7cvahqoreitgiqj67m4ihwf6fiqop3u.ipfs.nftstorage.link",
+        "tags": [],
+        "verified": true,
+        "holders": null
+      }
+    ];
       setTokenInfos(tokenList);
     }
 
@@ -155,7 +167,7 @@ export default function IndexPage() {
 
         <div className="flex w-full items-center justify-between">
           <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
-            SolDisperse
+            SolDisperse for FWOA
           </h1>
           <Popover>
             <PopoverTrigger asChild>
