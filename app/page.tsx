@@ -13,6 +13,7 @@ import {
   Logger,
   TransactionBuilder,
   TransactionHelper,
+  TransactionWrapper,
 } from "@solworks/soltoolkit-sdk"
 import { Copy, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -639,7 +640,6 @@ export default function IndexPage() {
                 }
               }
 
-
               logger.info(`Signing ${txs.length} transactions`);
               const signedTxs = await signAllTransactions(txs);
               logger.info(`Signed ${signedTxs.length} transactions`);
@@ -689,7 +689,11 @@ export default function IndexPage() {
               await Promise.all(sigs.map(async (txid, index) => {
                 logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
                 try {
-                  await conn.confirmTransaction(txid, commitment);
+                  await TransactionWrapper.confirmTx({
+                    connection: conn,
+                    signature: txid,
+                    commitment
+                  });
                   // find the address that corresponds to this txid
                   for (let j = 0; j < addresses.length; j++) {
                     if (addresses[j].txId === txid) {
