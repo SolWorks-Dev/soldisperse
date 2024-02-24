@@ -8,10 +8,11 @@ import {
 } from "@solana/spl-token"
 import { TokenInfo } from "@solana/spl-token-registry"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl, ComputeBudgetProgram, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js"
+import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl, ComputeBudgetProgram, LAMPORTS_PER_SOL, SystemProgram, TransactionInstruction } from "@solana/web3.js"
 import {
   Logger,
   TransactionBuilder,
+  TransactionHelper,
 } from "@solworks/soltoolkit-sdk"
 import { Copy, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -163,6 +164,27 @@ export default function IndexPage() {
       setTokens([]);
     }
   }, [connected]);
+
+  async function generateIxs(address: any, conn: Connection) {
+    const amountToSend = enableVariableTokenAmounts ? address.amount : amount
+    const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!
+    logger.info(`Sending ${amountToSend} tokens to ${address.address.toBase58()}`)
+    address.status = "signing"
+    setAddresses([...addresses])
+    let createTokenAccountIx = await TransactionHelper.createTokenAccountIx({
+      connectionOrConnectionManager: conn,
+      mint: new PublicKey(selectedToken),
+      owner: address.address,
+      payer: publicKey!,
+    })
+    let transferIx = TransactionHelper.createSplTransferIx({
+      fromTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey!),
+      toTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address),
+      rawAmount: useRawInput ? parseInt(amountToSend.toFixed(0)) : parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
+      owner: publicKey!,
+    })
+    return { createTokenAccountIx, transferIx }
+  }
 
   return (
     <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
@@ -585,55 +607,35 @@ export default function IndexPage() {
                     .build();
                   tx.recentBlockhash = recentBlockhash;
                   tx.feePayer = publicKey;
+                  console.log(TransactionHelper.getTxSize(tx, publicKey));
                   txs.push(tx);
                   logger.info(`Generated transaction for chunk ${i + 1} of ${chunks.length}`);
                   // update status
-                  // for (let j = 0; j < chunk.length; j++) {
-                  //   chunk[j].status = "sending";
-                  // }
+                  for (let j = 0; j < chunk.length; j++) {
+                    chunk[j].status = "signing";
+                  }
                 }
               } else {
-                for (let i = 0; i < addresses.length; i++) {
-                  const address = addresses[i];
-                  const amountToSend = enableVariableTokenAmounts ? address.amount : amount;
-                  const selectedTokenInfo = tokens.find((x) => x.mint === selectedToken)!;
-                  logger.info(`Sending ${amountToSend} tokens to ${address.address.toBase58()}`);
-                  address.status = "sending";
-                  setAddresses([...addresses]);
-                  try {
-                    const tx = (await (TransactionBuilder.create()
-                      .addSplTransferIx({
-                        fromTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), publicKey),
-                        toTokenAccount: getAssociatedTokenAddressSync(new PublicKey(selectedToken), address.address),
-                        rawAmount: useRawInput ? parseInt(amountToSend.toFixed(0)) : parseInt((amountToSend * Math.pow(10, selectedTokenInfo.decimals)).toFixed(0)),
-                        owner: publicKey,
-                      })
-                      .addCreateTokenAccountIx({
-                        connectionOrConnectionManager: conn,
-                        mint: new PublicKey(selectedToken),
-                        owner: address.address,
-                        payer: publicKey,
-                      })))
-                      .addMemoIx({
-                        memo: `Dispersed ${amountToSend} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
-                        signer: publicKey,
-                      })
-                      .addIx(priorityFeeIx)
-                      .build();
-                    tx.recentBlockhash = recentBlockhash;
-                    tx.feePayer = publicKey;
-                    txs.push(tx);
-                    logger.info(`Generated transaction for ${address.address.toBase58()}`);
-  
-                  } catch (e: any) {
-                    address.status = "error";
-                    setAddresses([...addresses]);
-                    logger.error(`Error sending transaction to ${address.address.toBase58()}`, e);
-                    toast({
-                      title: "Error",
-                      description: e.message,
-                    });
-                  }
+                // bundle 4 addresses per transaction
+                const chunks = chunkArray(addresses, 10);
+                for (let i = 0; i < chunks.length; i++) {
+                  const chunk = chunks[i];
+                  const ixs = (await Promise.all(chunk.map(async (address) => {
+                    let { createTokenAccountIx, transferIx } = await generateIxs(address, conn);
+                    const subixs = [];
+                    if (createTokenAccountIx !== null) { subixs.push(createTokenAccountIx); }
+                    if (transferIx) { subixs.push(transferIx); }
+                    return subixs;
+                  }))).flat();
+                  const tx = TransactionBuilder.create()
+                    .addIx(ixs)
+                    .addIx(priorityFeeIx)
+                    .build();
+                  tx.recentBlockhash = recentBlockhash;
+                  tx.feePayer = publicKey;
+                  console.log(TransactionHelper.getTxSize(tx, publicKey));
+                  txs.push(tx);
+                  logger.info(`Generated transaction for chunk ${i + 1} of ${chunks.length}`);
                 }
               }
 
@@ -646,9 +648,7 @@ export default function IndexPage() {
               const sigs = [];
               for (let i = 0; i < signedTxs.length; i++) {
                 const tx = signedTxs[i];
-                const involvedAddresses = tx.instructions.map((ix) => { return ix.keys.map((key) => key.pubkey.toBase58()) }).flat();
-                logger.info(`Involved addresses in transaction ${i + 1} of ${signedTxs.length}`, involvedAddresses);
-                
+                const involvedAddresses = tx.instructions.map((ix) => { return ix.keys.map((key) => key.pubkey.toBase58()) }).flat();                
                 for (let j = 0; j < addresses.length; j++) {
                   if (involvedAddresses.includes(addresses[j].address.toBase58())) {
                     addresses[j].status = "sending";
@@ -663,7 +663,7 @@ export default function IndexPage() {
                   logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
 
                   for (let j = 0; j < addresses.length; j++) {
-                    if (involvedAddresses.includes(addresses[j].address.toBase58())) {
+                    if (involvedAddresses.includes(addresses[j].address.toBase58()) && addresses[j].txId === undefined) {
                       addresses[j].status = "confirming";
                       addresses[j].txId = txid;
                     }
@@ -728,6 +728,8 @@ export default function IndexPage() {
 
             setProcessing(false);
             setRefresh(!refresh);
+
+            
           }}
         >
           {!processing &&
