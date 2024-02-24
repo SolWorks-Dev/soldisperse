@@ -90,7 +90,7 @@ export default function IndexPage() {
 
     const getAssetsByOwner = async () => {
       const response = await fetch(
-        `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=1b9c8608-b054-4f30-ab1b-cdbbfaba6e5f`
+        `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=${process.env.NEXT_PUBLIC_HELIUS_API_KEY}`
       )
       const result = await response.json();
       const solBalance = result.nativeBalance;
@@ -557,7 +557,7 @@ export default function IndexPage() {
                   tx.feePayer = publicKey;
                   txs.push(tx);
                   logger.info(`Generated transaction for chunk ${i + 1} of ${chunks.length}`);
-                  // // update status
+                  // update status
                   // for (let j = 0; j < chunk.length; j++) {
                   //   chunk[j].status = "sending";
                   // }
@@ -616,9 +616,11 @@ export default function IndexPage() {
               const sigs = [];
               for (let i = 0; i < signedTxs.length; i++) {
                 const tx = signedTxs[i];
-                const involvedAddresses = tx.instructions.map((ix) => { return ix.keys.map((key) => key.pubkey) }).flat();
+                const involvedAddresses = tx.instructions.map((ix) => { return ix.keys.map((key) => key.pubkey.toBase58()) }).flat();
+                logger.info(`Involved addresses in transaction ${i + 1} of ${signedTxs.length}`, involvedAddresses);
+                
                 for (let j = 0; j < addresses.length; j++) {
-                  if (involvedAddresses.includes(addresses[j].address)) {
+                  if (involvedAddresses.includes(addresses[j].address.toBase58())) {
                     addresses[j].status = "sending";
                   }
                 }
@@ -631,7 +633,7 @@ export default function IndexPage() {
                   logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
 
                   for (let j = 0; j < addresses.length; j++) {
-                    if (involvedAddresses.includes(addresses[j].address)) {
+                    if (involvedAddresses.includes(addresses[j].address.toBase58())) {
                       addresses[j].status = "confirming";
                       addresses[j].txId = txid;
                     }
@@ -720,7 +722,7 @@ export default function IndexPage() {
             <TableHead className="w-[100px]">ID</TableHead>
             <TableHead className="w-[100px]">Address</TableHead>
             <TableHead>Amount</TableHead>
-            <TableHead className="text-right">TX ID</TableHead>
+            <TableHead>TX ID</TableHead>
             <TableHead className="text-right">Status</TableHead>
           </TableRow>
         </TableHeader>
