@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react"
 import {
-  createAssociatedTokenAccountInstruction,
-  getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token"
 import { TokenInfo } from "@solana/spl-token-registry"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { Commitment, Connection, PublicKey, Transaction, clusterApiUrl, ComputeBudgetProgram, LAMPORTS_PER_SOL, SystemProgram, TransactionInstruction } from "@solana/web3.js"
+import { Commitment, Connection, PublicKey, Transaction, ComputeBudgetProgram, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js"
 import {
   Logger,
   TransactionBuilder,
@@ -85,6 +83,17 @@ export default function IndexPage() {
         "address": "Ds52CDgqdWbTWsua1hgT3AuSSy4FNx2Ezge1br3jQ14a",
         "decimals": 6,
         "logoURI": "https://jvsqc5no3sgvr3ubjds3fwji52lzt7ktry55x26vxokwpn4zg3ma.arweave.net/TWUBda7cjVjugUjlstko7peZ_VOOO9vr1buVZ7eZNtg",
+        "tags": [],
+        "verified": true,
+        "holders": null
+      },
+      {
+        "chainId": 101,
+        "name": "Founder wif out abs",
+        "symbol": "FWOA",
+        "address": "62U5zYJadvquCqvtqxaWfZmpLU8iT59J8z3BEfVc3Q92",
+        "decimals": 6,
+        "logoURI": "https://bafkreia7yu6lx35627q766bl6uc7cvahqoreitgiqj67m4ihwf6fiqop3u.ipfs.nftstorage.link",
         "tags": [],
         "verified": true,
         "holders": null
@@ -648,8 +657,10 @@ export default function IndexPage() {
               const sigs = [];
               for (let i = 0; i < signedTxs.length; i++) {
                 const tx = signedTxs[i];
+                // update status
                 const involvedAddresses = tx.instructions.map((ix) => { return ix.keys.map((key) => key.pubkey.toBase58()) }).flat();                
                 for (let j = 0; j < addresses.length; j++) {
+                  // find the address that corresponds to this txid
                   if (involvedAddresses.includes(addresses[j].address.toBase58())) {
                     addresses[j].status = "sending";
                   }
@@ -662,7 +673,9 @@ export default function IndexPage() {
                   sigs.push(txid);
                   logger.info(`Sent transaction ${i + 1} of ${signedTxs.length}`, txid);
 
+                  // update status
                   for (let j = 0; j < addresses.length; j++) {
+                    // find the address that corresponds to this txid
                     if (involvedAddresses.includes(addresses[j].address.toBase58()) && addresses[j].txId === undefined) {
                       addresses[j].status = "confirming";
                       addresses[j].txId = txid;
@@ -689,6 +702,7 @@ export default function IndexPage() {
               await Promise.all(sigs.map(async (txid, index) => {
                 logger.info(`Confirming transaction ${index + 1} of ${signedTxs.length}`);
                 try {
+                  // confirm transaction
                   await TransactionWrapper.confirmTx({
                     connection: conn,
                     signature: txid,
