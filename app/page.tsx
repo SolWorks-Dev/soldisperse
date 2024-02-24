@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   createAssociatedTokenAccountInstruction,
   getAccount,
@@ -35,8 +35,6 @@ import { Popover, PopoverContent } from "@/components/ui/popover"
 import { PopoverTrigger } from "@radix-ui/react-popover"
 
 const logger = new Logger("core");
-const PRIORITY_RATE = 100;
-const PRIORITY_FEE_IX = ComputeBudgetProgram.setComputeUnitPrice({microLamports: PRIORITY_RATE});
 const SOL_MINT = "11111111111111111111111111111111" // this is not a real mint, just a placeholder for SOL
 export interface TokenData {
   tokenAccount: string;
@@ -69,6 +67,10 @@ export default function IndexPage() {
   const [enableVariableTokenAmounts, setEnableVariableTokenAmounts] = useState<boolean>(false);
   const [defaultConnectionTimeout, setDefaultConnectionTimeout] = useState<number>(120);
   const [useRawInput, setUseRawInput] = useState<boolean>(false);
+  const [priorityRate, setPriorityRate] = useState<number>(100);
+  const priorityFeeIx = useMemo(() => {
+    return ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityRate});
+  }, [priorityRate]);
 
   useEffect(() => {
     const loadTokenInfos = async () => {
@@ -367,6 +369,34 @@ export default function IndexPage() {
                 </div>
               </div>
 
+              <Separator style={{ marginTop: 20, marginBottom: 20 }} />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Priority fee rate</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Set the priority fee rate for transactions.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Input
+                      id="priorityFeeRate"
+                      placeholder="Priority fee rate"
+                      className="col-span-2 h-8"
+                      value={priorityRate}
+                      onChange={(e) => {
+                        console.log(e.target.value);
+                        setPriorityRate(parseFloat(e.target.value));
+                        toast({
+                          title: "Priority fee rate updated",
+                          description: "The priority fee rate has been updated to " + e.target.value,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
             </PopoverContent>
           </Popover>
         </div>
@@ -551,7 +581,7 @@ export default function IndexPage() {
                   });
                   const tx = TransactionBuilder.create()
                     .addIx(ixs)
-                    .addIx(PRIORITY_FEE_IX)
+                    .addIx(priorityFeeIx)
                     .build();
                   tx.recentBlockhash = recentBlockhash;
                   tx.feePayer = publicKey;
@@ -588,7 +618,7 @@ export default function IndexPage() {
                         memo: `Dispersed ${amountToSend} ${selectedToken} to ${address.address.toBase58()}. Powered by SolDisperse by SolWorks.`,
                         signer: publicKey,
                       })
-                      .addIx(PRIORITY_FEE_IX)
+                      .addIx(priorityFeeIx)
                       .build();
                     tx.recentBlockhash = recentBlockhash;
                     tx.feePayer = publicKey;
