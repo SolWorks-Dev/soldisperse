@@ -200,7 +200,7 @@ export default function IndexPage() {
     <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
       <div className="flex flex-col items-start gap-2">
         <p className="max-w-[700px] text-lg text-muted-foreground">
-          verb: To distribute SPL tokens to multiple adresses.
+          verb: To distribute SOL or SPL tokens to multiple adresses. No fees.
         </p>
 
         <div className="flex w-full items-center justify-between">
