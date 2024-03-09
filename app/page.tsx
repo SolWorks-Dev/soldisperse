@@ -33,6 +33,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { TokenSelector } from "./TokenSelector"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import { PopoverTrigger } from "@radix-ui/react-popover"
+import { siteConfig } from "@/config/site"
 
 const logger = new Logger("core");
 const SOL_MINT = "11111111111111111111111111111111" // this is not a real mint, just a placeholder for SOL
@@ -62,7 +63,7 @@ export default function IndexPage() {
   const [tokenInfos, setTokenInfos] = useState<TokenInfo[]>([]);
   const [processing, setProcessing] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string>("");
-  const [inputValue, setInputValue] = useState<string>('https://racial-ibbie-fast-mainnet.helius-rpc.com/');
+  const [inputValue, setInputValue] = useState<string>(siteConfig.links.defaultRPC);
   const [commitment, setCommitment] = useState<Commitment>('processed');
   const [enableVariableTokenAmounts, setEnableVariableTokenAmounts] = useState<boolean>(false);
   const [defaultConnectionTimeout, setDefaultConnectionTimeout] = useState<number>(120);
@@ -435,6 +436,32 @@ export default function IndexPage() {
       </div>
       <Separator />
       <div className="grid w-full gap-2">
+        <div className="grid w-full gap-0">
+          <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
+            Enter RPC endpoint
+          </h1>
+          <div className="max-w-[700px] text-base text-muted-foreground">
+            <div className="inline-block">
+              Step 0: Enter your RPC endpoint. You can get one over at <a href="https://helius.xyz" target="_blank" rel="noreferrer" className="text-blue-500 underline">Helius</a>.
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 items-center gap-4 pb-4">
+          <Input
+            id="endpoint"
+            placeholder="Endpoint"
+            className="col-span-2 h-8"
+            value={inputValue}
+            onChange={(e) => {
+              console.log(e.target.value);
+              setInputValue(e.target.value)
+              toast({
+                title: "Endpoint updated",
+                description: "The endpoint has been updated to " + e.target.value,
+              });
+            }}
+          />
+        </div>
         <div className="grid w-full gap-0">
           <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
             Select a token
