@@ -66,6 +66,7 @@ export default function IndexPage() {
   const [inputValue, setInputValue] = useState<string>(siteConfig.links.defaultRPC);
   const [commitment, setCommitment] = useState<Commitment>('processed');
   const [enableVariableTokenAmounts, setEnableVariableTokenAmounts] = useState<boolean>(false);
+  const [delayBetweenBatches, setDelayBetweenBatches] = useState<number>(0);
   const [defaultConnectionTimeout, setDefaultConnectionTimeout] = useState<number>(120);
   const [useRawInput, setUseRawInput] = useState<boolean>(false);
   const [priorityRate, setPriorityRate] = useState<number>(100);
@@ -430,6 +431,34 @@ export default function IndexPage() {
                 </div>
               </div>
 
+              <Separator style={{ marginTop: 20, marginBottom: 20 }} />
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Delay between batches</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Set the delay between batches in seconds.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 items-center gap-4">
+                    <Input
+                      id="delayBetweenBatches"
+                      placeholder="Delay between batches"
+                      className="col-span-2 h-8"
+                      value={delayBetweenBatches}
+                      onChange={(e) => {
+                        console.log(e.target.value);
+                        setDelayBetweenBatches(parseFloat(e.target.value));
+                        toast({
+                          title: "Delay between batches updated",
+                          description: "The delay between batches has been updated to " + e.target.value,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
             </PopoverContent>
           </Popover>
         </div>
@@ -658,10 +687,16 @@ export default function IndexPage() {
                 for (let i = 0; i < chunks.length; i++) {
                   const chunk = chunks[i];
                   const ixs = (await Promise.all(chunk.map(async (address) => {
-                    let { createTokenAccountIx, transferIx } = await generateIxs(address, conn);
                     const subixs = [];
-                    if (createTokenAccountIx !== null) { subixs.push(createTokenAccountIx); }
-                    if (transferIx) { subixs.push(transferIx); }
+                    // wrap in try catch to avoid breaking when attemping to send to an off the curve address
+                    try {
+                      let { createTokenAccountIx, transferIx } = await generateIxs(address, conn);
+                      if (createTokenAccountIx !== null) { subixs.push(createTokenAccountIx); }
+                      if (transferIx) { subixs.push(transferIx); }
+                    } catch (e: any) {
+                      logger.error(`Error processing address: ${address.address.toBase58()}`, e);
+                      address.status = "error";
+                    }
                     return subixs;
                   }))).flat();
                   const tx = TransactionBuilder.create()
@@ -673,6 +708,8 @@ export default function IndexPage() {
                   console.log(TransactionHelper.getTxSize(tx, publicKey));
                   txs.push(tx);
                   logger.info(`Generated transaction for chunk ${i + 1} of ${chunks.length}`);
+
+                  await new Promise((resolve) => setTimeout(resolve, delayBetweenBatches * 1000));
                 }
               }
 
