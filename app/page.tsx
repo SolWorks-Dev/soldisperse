@@ -451,7 +451,7 @@ export default function IndexPage() {
                         setDelayBetweenBatches(parseFloat(e.target.value));
                         toast({
                           title: "Delay between batches updated",
-                          description: "The delay between batches has been updated to " + e.target.value,
+                          description: "The delay between batches has been updated to " + e.target.value + " seconds",
                         });
                       }}
                     />
