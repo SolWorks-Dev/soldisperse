@@ -64,6 +64,7 @@ export default function IndexPage() {
   const [processing, setProcessing] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string>("");
   const [inputValue, setInputValue] = useState<string>(siteConfig.links.defaultRPC);
+  const [heliusApiKey, setHeliusApiKey] = useState<string>("");
   const [commitment, setCommitment] = useState<Commitment>('processed');
   const [enableVariableTokenAmounts, setEnableVariableTokenAmounts] = useState<boolean>(false);
   const [delayBetweenBatches, setDelayBetweenBatches] = useState<number>(0);
@@ -104,8 +105,16 @@ export default function IndexPage() {
     }
 
     const getAssetsByOwner = async () => {
+      if (heliusApiKey === "") {
+        toast({
+          title: "Error",
+          description: "Helius API key must not be missing",
+        });
+        return;
+      }
+
       const response = await fetch(
-        `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=${process.env.NEXT_PUBLIC_HELIUS_API_KEY}`
+        `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=${heliusApiKey}`
       )
       const result = await response.json();
       const solBalance = result.nativeBalance;
@@ -471,7 +480,7 @@ export default function IndexPage() {
           </h1>
           <div className="max-w-[700px] text-base text-muted-foreground">
             <div className="inline-block">
-              Step 0: Enter your RPC endpoint. You can get one over at <a href="https://helius.xyz" target="_blank" rel="noreferrer" className="text-blue-500 underline">Helius</a>.
+              Step 1: Enter your RPC endpoint. You can get one over at <a href="https://helius.xyz" target="_blank" rel="noreferrer" className="text-blue-500 underline">Helius</a>.
             </div>
           </div>
         </div>
@@ -493,11 +502,37 @@ export default function IndexPage() {
         </div>
         <div className="grid w-full gap-0">
           <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
+            Enter Helius API key
+          </h1>
+          <div className="max-w-[700px] text-base text-muted-foreground">
+            <div className="inline-block">
+              Step 2: Enter your Helius API key. You can get one over at <a href="https://helius.xyz" target="_blank" rel="noreferrer" className="text-blue-500 underline">Helius</a>.
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 items-center gap-4 pb-4">
+          <Input
+            id="heliusApiKey"
+            placeholder="Helius API key"
+            className="col-span-2 h-8"
+            value={heliusApiKey}
+            onChange={(e) => {
+              console.log(e.target.value);
+              setHeliusApiKey(e.target.value)
+              toast({
+                title: "Helius API key updated",
+                description: "Helius API key has been updated to " + e.target.value,
+              });
+            }}
+          />
+        </div>
+        <div className="grid w-full gap-0">
+          <h1 className="text-2xl font-extrabold leading-tight tracking-tighter md:text-2xl">
             Select a token
           </h1>
           <div className="max-w-[700px] text-base text-muted-foreground">
             <div className="inline-block">
-              Step 1: Select a token to disperse.
+              Step 3: Select a token to disperse.
             </div>
           </div>
         </div>
@@ -526,7 +561,7 @@ export default function IndexPage() {
           </h1>
           <div className="max-w-[700px] text-lg text-muted-foreground">
             <div className="inline-block pr-4 text-base">
-              Step 2: Enter the amount of tokens to disperse per address.
+              Step 4: Enter the amount of tokens to disperse per address.
             </div>
           </div>
         </div>
@@ -547,7 +582,7 @@ export default function IndexPage() {
           </h1>
           <div className="max-w-[700px] text-base text-muted-foreground">
             <div className="inline-block pr-4">
-              Step 3: Enter the addresses to disperse tokens to.
+              Step 5: Enter the addresses to disperse tokens to.
             </div>
           </div>
         </div>
