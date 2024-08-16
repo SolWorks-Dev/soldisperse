@@ -1,6 +1,6 @@
 import "@/styles/globals.css"
 import { Metadata } from "next"
-
+import { Analytics } from "@vercel/analytics/react"
 import { siteConfig } from "@/config/site"
 import { fontSans } from "@/lib/fonts"
 import { cn } from "@/lib/utils"
@@ -57,24 +57,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
               </div>
               <TailwindIndicator />
             </Wallet>
+            <Analytics />
           </ThemeProvider>
         </body>
       </html>
     </>
-  )
-}
-function WalletSheet({ open }: { open: boolean }) {
-  return (
-    <Sheet open={open}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Are you sure absolutely sure?</SheetTitle>
-          <SheetDescription>
-            This action cannot be undone. This will permanently delete your
-            account and remove your data from our servers.
-          </SheetDescription>
-        </SheetHeader>
-      </SheetContent>
-    </Sheet>
   )
 }

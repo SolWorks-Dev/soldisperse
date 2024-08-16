@@ -3,7 +3,7 @@ export type SiteConfig = typeof siteConfig
 export const siteConfig = {
   name: "SolDisperse",
   description:
-    "Distribute any SPL token to multiple addresses with a simple UI and auto-retries.",
+    "Distribute any SPL token to multiple addresses with a simple UI and auto-retries. Token Airdrop Launchpad.",
   mainNav: [],
   links: {
     twitter: "https://twitter.com/zhesolworks",
