@@ -31,6 +31,7 @@ import {
 import { Icons } from "@/components/icons"
 import { MainNav } from "@/components/main-nav"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { MoongateWalletAdapter } from "@moongate/moongate-adapter"
 
 require("@solana/wallet-adapter-react-ui/styles.css")
 
@@ -38,7 +39,11 @@ export const Wallet = ({ children }: { children: any }) => {
   const network = WalletAdapterNetwork.Mainnet
   const endpoint = useMemo(() => clusterApiUrl(network), [network])
   const wallets = useMemo(
-    () => [new UnsafeBurnerWalletAdapter()],
+    () => [
+      new MoongateWalletAdapter(),
+      new UnsafeBurnerWalletAdapter()
+
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [network]
   )
