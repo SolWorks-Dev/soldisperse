@@ -77,30 +77,9 @@ export default function IndexPage() {
 
   useEffect(() => {
     const loadTokenInfos = async () => {
-      const response = await fetch('https://cdn.jsdelivr.net/gh/solflare-wallet/token-list@latest/solana-tokenlist.json');
+      const response = await fetch('https://github.com/solflare-wallet/token-list/raw/refs/heads/master/solana-tokenlist.json');
       const result = await response.json();
-      const tokenList = [...result.tokens as TokenInfo[], {
-        "chainId": 101,
-        "name": "Dean's List",
-        "symbol": "DEAN",
-        "address": "Ds52CDgqdWbTWsua1hgT3AuSSy4FNx2Ezge1br3jQ14a",
-        "decimals": 6,
-        "logoURI": "https://jvsqc5no3sgvr3ubjds3fwji52lzt7ktry55x26vxokwpn4zg3ma.arweave.net/TWUBda7cjVjugUjlstko7peZ_VOOO9vr1buVZ7eZNtg",
-        "tags": [],
-        "verified": true,
-        "holders": null
-      },
-      {
-        "chainId": 101,
-        "name": "Founder wif out abs",
-        "symbol": "FWOA",
-        "address": "62U5zYJadvquCqvtqxaWfZmpLU8iT59J8z3BEfVc3Q92",
-        "decimals": 6,
-        "logoURI": "https://bafkreia7yu6lx35627q766bl6uc7cvahqoreitgiqj67m4ihwf6fiqop3u.ipfs.nftstorage.link",
-        "tags": [],
-        "verified": true,
-        "holders": null
-      }];
+      const tokenList = result.tokens as TokenInfo[];
       setTokenInfos(tokenList);
     }
 
