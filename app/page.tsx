@@ -77,7 +77,7 @@ export default function IndexPage() {
 
   useEffect(() => {
     const loadTokenInfos = async () => {
-      const response = await fetch('https://github.com/solflare-wallet/token-list/raw/refs/heads/master/solana-tokenlist.json');
+      const response = await fetch('https://soldisperse-cdn.s3.eu-north-1.amazonaws.com/solana-tokenlist.json');
       const result = await response.json();
       const tokenList = result.tokens as TokenInfo[];
       setTokenInfos(tokenList);
