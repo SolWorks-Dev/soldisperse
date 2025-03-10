@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token"
@@ -33,6 +33,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { TokenSelector } from "./TokenSelector"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import { PopoverTrigger } from "@radix-ui/react-popover"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { siteConfig } from "@/config/site"
 
 const logger = new Logger("core");
@@ -53,6 +54,10 @@ export type TransactionRecord = {
   txId?: string;
 };
 
+const CACHE_KEY = 'soldisperse_token_list';
+const CACHE_VERSION = '1';
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
 export default function IndexPage() {
   const { publicKey, connected, signAllTransactions } = useWallet();
   const { toast } = useToast();
@@ -71,19 +76,160 @@ export default function IndexPage() {
   const [defaultConnectionTimeout, setDefaultConnectionTimeout] = useState<number>(120);
   const [useRawInput, setUseRawInput] = useState<boolean>(false);
   const [priorityRate, setPriorityRate] = useState<number>(100);
+  const [downloadProgress, setDownloadProgress] = useState({ 
+    loaded: 0, 
+    total: 0, 
+    startTime: 0,
+    speed: 0
+  });
+  const speedSamplesRef = useRef<number[]>([]);
+  const [loadingState, setLoadingState] = useState<'idle' | 'token-list' | 'account-tokens'>('idle');
   const priorityFeeIx = useMemo(() => {
     return ComputeBudgetProgram.setComputeUnitPrice({microLamports: priorityRate});
   }, [priorityRate]);
 
+  const getAssetsByOwner = useCallback(async () => {
+    const response = await fetch(
+      `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=${heliusApiKey}`
+    )
+    const result = await response.json();
+    const solBalance = result.nativeBalance;
+    const accounts = result.tokens.filter((x: any) => x.amount > 0);
+    const tokens: TokenData[] = accounts
+      .map((x: any) => {
+        const scaledAmount = x.amount / Math.pow(10, x.decimals)
+        const tokenInfo = tokenInfos.find((y) => y.address === x.mint)
+        return {
+          tokenAccount: x.address,
+          mint: x.mint,
+          amount: x.amount,
+          decimals: x.decimals,
+          value: x.mint,
+          label: `${tokenInfo?.name} (${scaledAmount})` || x.mint,
+          name: tokenInfo?.name,
+        }
+      })
+      .filter((x: any) => x.name !== undefined);
+    setTokens([
+      {
+        tokenAccount: publicKey!.toBase58(),
+        mint: SOL_MINT,
+        amount: solBalance,
+        decimals: 9,
+        value: SOL_MINT,
+        label: `SOL (${solBalance/ 10 ** 9})`,
+        name: "SOL",
+      },
+      ...tokens,
+    ]);
+  }, [publicKey, heliusApiKey, tokenInfos]);
+
   useEffect(() => {
     const loadTokenInfos = async () => {
-      const response = await fetch('https://soldisperse-cdn.s3.eu-north-1.amazonaws.com/solana-tokenlist.json');
-      const result = await response.json();
-      const tokenList = result.tokens as TokenInfo[];
-      setTokenInfos(tokenList);
+      // skip if we are already loading
+      if (loadingState !== 'idle') return;
+      
+      try {
+        // Check cache first
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        if (cachedData) {
+          const { version, timestamp, data } = JSON.parse(cachedData);
+          const isExpired = Date.now() - timestamp > CACHE_TTL;
+          
+          if (version === CACHE_VERSION && !isExpired) {
+            setTokenInfos(data);
+            return;
+          }
+        }
+
+        setLoadingState('token-list');
+        const startTime = Date.now();
+        speedSamplesRef.current = [];
+        setDownloadProgress({ loaded: 0, total: 0, startTime, speed: 0 });
+        
+        const response = await fetch('https://soldisperse-cdn.s3.eu-north-1.amazonaws.com/solana-tokenlist.json');
+        const contentLength = parseInt(response.headers.get('Content-Length') || '0');
+        
+        if (!response.body) {
+          throw new Error('No response body');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let receivedLength = 0;
+        let text = '';
+        let lastReceivedLength = 0;
+        let lastUpdate = startTime;
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            break;
+          }
+          
+          text += decoder.decode(value, { stream: true });
+          receivedLength += value.length;
+          
+          const currentTime = Date.now();
+          const timeSinceLastUpdate = (currentTime - lastUpdate) / 1000;
+          
+          // Only update speed if enough time has passed (100ms)
+          if (timeSinceLastUpdate >= 0.1) {
+            // Calculate speed based on total progress since last update
+            const bytesDownloadedSinceLastUpdate = receivedLength - lastReceivedLength;
+            const instantSpeed = timeSinceLastUpdate > 0 ? bytesDownloadedSinceLastUpdate / timeSinceLastUpdate : 0;
+            
+            if (instantSpeed > 0 && !isNaN(instantSpeed) && isFinite(instantSpeed)) {
+              speedSamplesRef.current = [...speedSamplesRef.current, instantSpeed].slice(-5);
+            }
+            
+            const averageSpeed = speedSamplesRef.current.length > 0 
+              ? speedSamplesRef.current.reduce((a, b) => a + b, 0) / speedSamplesRef.current.length 
+              : 0;
+            
+            setDownloadProgress({
+              loaded: receivedLength,
+              total: contentLength,
+              startTime,
+              speed: averageSpeed
+            });
+            
+            lastUpdate = currentTime;
+            lastReceivedLength = receivedLength;
+          }
+        }
+        
+        const result = JSON.parse(text);
+        const tokenList = result.tokens as TokenInfo[];
+        
+        // Cache the token list
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          version: CACHE_VERSION,
+          timestamp: Date.now(),
+          data: tokenList
+        }));
+        
+        setTokenInfos(tokenList);
+      } catch (error) {
+        console.error('Error loading token list:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load token list",
+        });
+      }
     }
 
-    const getAssetsByOwner = async () => {
+    if (tokenInfos.length === 0) {
+      setProcessing(true);
+      loadTokenInfos()
+        .then(() => {
+          setProcessing(false);
+          setLoadingState('idle');
+        })
+    }
+
+    if (connected && publicKey) {
       if (heliusApiKey === "") {
         toast({
           title: "Error",
@@ -92,68 +238,27 @@ export default function IndexPage() {
         return;
       }
 
-      const response = await fetch(
-        `https://api.helius.xyz/v0/addresses/${publicKey!.toBase58()}/balances?api-key=${heliusApiKey}`
-      )
-      const result = await response.json();
-      const solBalance = result.nativeBalance;
-      const accounts = result.tokens.filter((x: any) => x.amount > 0);
-      const tokens: TokenData[] = accounts
-        .map((x: any) => {
-          const scaledAmount = x.amount / Math.pow(10, x.decimals)
-          const tokenInfo = tokenInfos.find((y) => y.address === x.mint)
-          return {
-            tokenAccount: x.address,
-            mint: x.mint,
-            amount: x.amount,
-            decimals: x.decimals,
-            value: x.mint,
-            label: `${tokenInfo?.name} (${scaledAmount})` || x.mint,
-            name: tokenInfo?.name,
-          }
-        })
-        .filter((x: any) => x.name !== undefined);
-      setTokens([
-        {
-          tokenAccount: publicKey!.toBase58(),
-          mint: SOL_MINT,
-          amount: solBalance,
-          decimals: 9,
-          value: SOL_MINT,
-          label: `SOL (${solBalance/ 10 ** 9})`,
-          name: "SOL",
-        },
-        ...tokens,
-      ]);
-    }
-
-    if (tokenInfos.length === 0) {
-      setProcessing(true);
-      loadTokenInfos()
-        .then(() => {
-          setProcessing(false);
-        })
-    }
-
-    if (connected && publicKey) {
+      setLoadingState('account-tokens');
       setProcessing(true);
       getAssetsByOwner()
         .then(() => {
           setProcessing(false);
+          setLoadingState('idle');
           toast({
             title: "Loaded",
             description: "Loaded token data for " + publicKey.toBase58().substring(0, 4) + "..." + publicKey.toBase58().substring(publicKey.toBase58().length - 4),
           });
         })
-        .catch((e) => {
+        .catch((e: Error) => {
           setProcessing(false);
+          setLoadingState('idle');
           toast({
             title: "Error",
             description: e.message,
           });
         });
     }
-  }, [connected, publicKey, refresh, tokenInfos]);
+  }, [connected, publicKey, refresh, tokenInfos, heliusApiKey, toast, getAssetsByOwner]);
 
   // clear transction log on disconnect
   useEffect(() => {
@@ -188,6 +293,48 @@ export default function IndexPage() {
 
   return (
     <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
+      <Dialog open={processing} modal>
+        <DialogContent className="flex min-w-[300px] flex-col items-center justify-center gap-4">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              <p>
+                {loadingState === 'token-list' 
+                  ? "Loading token list..." 
+                  : loadingState === 'account-tokens'
+                  ? "Loading account tokens..."
+                  : "Loading..."}
+              </p>
+            </div>
+            
+            {loadingState === 'token-list' && (
+              <>
+                <div className="h-2.5 w-full rounded-full bg-secondary">
+                  <div 
+                    className="h-2.5 rounded-full bg-primary transition-all duration-300" 
+                    style={{ width: `${downloadProgress.total ? (downloadProgress.loaded / downloadProgress.total * 100).toFixed(1) : 0}%` }}
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {downloadProgress.total > 0 ? (
+                    <>
+                      <p>
+                        {((downloadProgress.loaded / downloadProgress.total * 100).toFixed(1))}% - {((downloadProgress.loaded / 1024 / 1024).toFixed(1))} MB of {((downloadProgress.total / 1024 / 1024).toFixed(1))} MB ({
+                          downloadProgress.speed > 1024 * 1024 
+                            ? `${(downloadProgress.speed / 1024 / 1024).toFixed(1)} MB/s`
+                            : `${(downloadProgress.speed / 1024).toFixed(1)} KB/s`
+                        })
+                      </p>
+                    </>
+                  ) : (
+                    <p>Initializing download...</p>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       <div className="flex flex-col items-start gap-2">
         <p className="max-w-[700px] text-lg text-muted-foreground">
           verb: To distribute SOL or SPL tokens to multiple adresses. No fees.
@@ -196,6 +343,18 @@ export default function IndexPage() {
         <div className="flex w-full items-center justify-between">
           <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
             SolDisperse
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2"
+              onClick={() => {
+                localStorage.removeItem(CACHE_KEY);
+                setTokenInfos([]);
+              }}
+              title="Refresh token list"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           </h1>
           <Popover>
             <PopoverTrigger asChild>
