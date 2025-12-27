@@ -1,6 +1,7 @@
 "use client"
 
-import { Toaster } from "@/components/ui/toaster"
+import { useMemo } from "react"
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base"
 import {
   ConnectionProvider,
   WalletProvider,
@@ -8,16 +9,27 @@ import {
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui"
 import { UnsafeBurnerWalletAdapter } from "@solana/wallet-adapter-wallets"
 import { clusterApiUrl } from "@solana/web3.js"
-export const Wallet = ({ children }: { children: any }) => {
-  const wallets = [
-    new UnsafeBurnerWalletAdapter()
-  ];
+import { MoongateWalletAdapter } from "@moongate/moongate-adapter"
+
+require("@solana/wallet-adapter-react-ui/styles.css")
+
+export const Wallet = ({ children }: { children: React.ReactNode }) => {
+  const network = WalletAdapterNetwork.Mainnet
+  const endpoint = useMemo(() => clusterApiUrl(network), [network])
+  
+  const wallets = useMemo(
+    () => [
+      new MoongateWalletAdapter(),
+      new UnsafeBurnerWalletAdapter(),
+    ],
+    []
+  )
+
   return (
-    <ConnectionProvider endpoint={clusterApiUrl('mainnet-beta')}>
+    <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           {children}
-          <Toaster />
         </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
